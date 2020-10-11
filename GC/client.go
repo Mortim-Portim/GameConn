@@ -9,7 +9,7 @@ import (
 	ws "github.com/gorilla/websocket"
 )
 
-func GetNewClient(InputHandler func(mt int, msg []byte, err error) (alive bool), name string) (cl *Client) {
+func GetNewClient(InputHandler func(mt int, msg []byte, err error, c *Client) (alive bool), name string) (cl *Client) {
 	cl = &Client{name: name, InputHandler: InputHandler}
 	return
 }
@@ -19,7 +19,7 @@ type Client struct {
 	name          string
 	done, waiting chan struct{}
 	interrupt     chan os.Signal
-	InputHandler  func(mt int, msg []byte, err error) (alive bool)
+	InputHandler  func(mt int, msg []byte, err error, c *Client) (alive bool)
 	sendMessage   []byte
 }
 
@@ -49,7 +49,8 @@ func (c *Client) MakeConn(addr string) error {
 	go func() {
 		defer close(c.done)
 		for {
-			if !c.InputHandler(c.ReadMessage()) {
+			mt, msg, err := c.ReadMessage()
+			if !c.InputHandler(mt, msg, err, c) {
 				return
 			}
 		}
@@ -89,7 +90,7 @@ func (c *Client) MakeConn(addr string) error {
 func (c *Client) CloseConn() error {
 	// Cleanly close the connection by sending a close message and then
 	// waiting (with timeout) for the server to close the connection.
-	err := c.WriteMessage(ws.CloseMessage, ws.FormatCloseMessage(ws.CloseNormalClosure, CLOSECONN))
+	err := c.WriteMessage(ws.CloseMessage, []byte(CLOSECONN))
 	if err != nil {
 		return err
 	}
