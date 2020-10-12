@@ -9,8 +9,8 @@ import (
 	ws "github.com/gorilla/websocket"
 )
 
-func GetNewClient(InputHandler func(mt int, msg []byte, err error, c *Client) (alive bool), name string) (cl *Client) {
-	cl = &Client{name: name, InputHandler: InputHandler}
+func GetNewClient(name string) (cl *Client) {
+	cl = &Client{name: name}
 	return
 }
 
