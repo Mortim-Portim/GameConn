@@ -41,6 +41,13 @@ func (s *Server) Send(bs []byte, ci int) error {
 	close(ch)
 	return nil
 }
+func (s *Server) SendToMultiple(bs []byte, ci ...int) error {
+	for _,i := range(ci) {
+		err := s.Send(bs, i)
+		if err != nil {return err}
+	}
+	return nil
+}
 
 func (s *Server) SendAll(bs []byte) error {
 	for i := 0; i < s.connCounter; i++ {
