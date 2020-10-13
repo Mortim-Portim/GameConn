@@ -16,21 +16,25 @@ import (
 
 //Syncronized Variable                                                       
 type SyncVar interface {
-	isDirty() bool
-	getData() []byte
-	setData([]byte)
+	IsDirty() bool
+	GetData() []byte
+	SetData([]byte)
 	Type() byte
 }
+
+var RegisteredSyncVarTypes map[byte](func()(SyncVar))
+func RegisterSyncVar(idx byte, factory func()(SyncVar)) {
+	RegisteredSyncVarTypes[idx] = factory
+}
+func InitSyncVarStandardTypes() {
+	RegisteredSyncVarTypes = make(map[byte](func()(SyncVar)))
+	RegisteredSyncVarTypes[INT64SYNCED] = func()(SyncVar){return &SyncInt64{}}
+	RegisteredSyncVarTypes[FLOAT64SYNCED] = func()(SyncVar){return &SyncFloat64{}}
+	RegisteredSyncVarTypes[STRINGSYNCED] = func()(SyncVar){return &SyncString{}}
+}
+
 func GetSyncVarOfType(t byte) SyncVar {
-	switch t {
-		case INT64SYNCED:
-			return &SyncInt64{}
-		case FLOAT64SYNCED:
-			return &SyncFloat64{}
-		case STRINGSYNCED:
-			return &SyncString{}
-	}
-	return &SyncInt64{}
+	return RegisteredSyncVarTypes[t]()
 }
 
 // +-+-+-+-+-+-+-+-+-+
@@ -47,15 +51,15 @@ func (sv *SyncInt64) SetInt(i int64) {
 func (sv *SyncInt64) GetInt() int64 {
 	return sv.variable
 }
-func (sv *SyncInt64) isDirty() bool {
+func (sv *SyncInt64) IsDirty() bool {
 	return sv.dirty
 }
-func (sv *SyncInt64) getData() []byte {
+func (sv *SyncInt64) GetData() []byte {
 	buf := new(bytes.Buffer)
 	binary.Write(buf, binary.LittleEndian, sv.variable)
 	return buf.Bytes()
 }
-func (sv *SyncInt64) setData(variable []byte) {
+func (sv *SyncInt64) SetData(variable []byte) {
 	buf := bytes.NewBuffer(variable)
 	binary.Read(buf, binary.LittleEndian, &sv.variable)
 }
@@ -80,15 +84,15 @@ func (sv *SyncFloat64) SetFloat(i float64) {
 func (sv *SyncFloat64) GetFloat() float64 {
 	return sv.variable
 }
-func (sv *SyncFloat64) isDirty() bool {
+func (sv *SyncFloat64) IsDirty() bool {
 	return sv.dirty
 }
-func (sv *SyncFloat64) getData() []byte {
+func (sv *SyncFloat64) GetData() []byte {
 	buf := new(bytes.Buffer)
 	binary.Write(buf, binary.LittleEndian, sv.variable)
 	return buf.Bytes()
 }
-func (sv *SyncFloat64) setData(variable []byte) {
+func (sv *SyncFloat64) SetData(variable []byte) {
 	buf := bytes.NewBuffer(variable)
 	binary.Read(buf, binary.LittleEndian, &sv.variable)
 }
@@ -113,13 +117,13 @@ func (sv *SyncString) SetString(i string) {
 func (sv *SyncString) GetString() string {
 	return sv.variable
 }
-func (sv *SyncString) isDirty() bool {
+func (sv *SyncString) IsDirty() bool {
 	return sv.dirty
 }
-func (sv *SyncString) getData() []byte {
+func (sv *SyncString) GetData() []byte {
 	return []byte(sv.variable)
 }
-func (sv *SyncString) setData(variable []byte) {
+func (sv *SyncString) SetData(variable []byte) {
 	sv.variable = string(variable)
 }
 func (sv *SyncString) Type() byte {

@@ -34,12 +34,12 @@ func (ch *ClientHandler) RegisterSyncVar(sv SyncVar, name string) {
 func (ch *ClientHandler) UpdateSyncVars() {
 	var_data := []byte{SYNCVAR_UPDATE}
 	for id,sv := range(ch.SyncvarsByID) {
-		if sv.isDirty() {
-			syncDat := sv.getData()
+		if sv.IsDirty() {
+			syncDat := sv.GetData()
 			data := append(cmp.Int16ToBytes(int16(len(syncDat))), syncDat...)
 			payload := append(cmp.Int16ToBytes(int16(id)), data...)
 			var_data = append(var_data, payload...)
-			log.Printf("#####Server: Updating SyncVar with ID=%v: dat=%v, initiated by self=%s", id, syncDat, ch.Conn.LocalAddr().String())
+			log.Printf("#####Server: Updating SyncVar with ID=%v: len(dat)=%v, initiated by self=%s", id, len(syncDat), ch.Conn.LocalAddr().String())
 		}
 	}
 	if len(var_data) > 1 {
@@ -67,11 +67,11 @@ func (ch *ClientHandler) onSyncVarUpdateC(data []byte) {
 		l := cmp.BytesToInt16(data[2:4])
 		dat := data[4:4+l]
 		data = data[4+l:]
-		ch.SyncvarsByID[int(id)].setData(dat)
+		ch.SyncvarsByID[int(id)].SetData(dat)
 		if len(data) <= 0 {
 			break
 		}
-		log.Printf("#####Server: Updating SyncVar with ID=%v: len(dat)=%v, dat=%v, initiated by client=%s", id, l, dat, ch.Conn.RemoteAddr().String())
+		log.Printf("#####Server: Updating SyncVar with ID=%v: len(dat)=%v, initiated by client=%s", id, l, ch.Conn.RemoteAddr().String())
 	}
 }
 func (ch *ClientHandler) processSyncVarRegistry(data []byte) {
@@ -119,7 +119,10 @@ func (m *ServerManager) DeleteSyncVar(name string, clients ...*ws.Conn) {
 	}
 }
 func (m *ServerManager) GetHandler(id int) *ClientHandler {
-	return m.Handler[m.AllClients[id]]
+	if id >= 0 && id < len(m.AllClients) {
+		return m.Handler[m.AllClients[id]]
+	}
+	return nil
 }
 
 func (m *ServerManager) receive(c *ws.Conn, mt int, msg []byte, err error, s *Server) {

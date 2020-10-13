@@ -9,13 +9,12 @@ import (
 	ws "github.com/gorilla/websocket"
 )
 
-func GetNewClient(name string) (cl *Client) {
-	cl = &Client{name: name, confirmed:false}
+func GetNewClient() (cl *Client) {
+	cl = &Client{confirmed:false}
 	return
 }
 type Client struct {
 	ws.Conn
-	name          string
 	done, waiting chan struct{}
 	interrupt     chan os.Signal
 	InputHandler  func(mt int, msg []byte, err error, c *Client) (alive bool)
@@ -57,6 +56,9 @@ func (c *Client) MakeConn(addr string) error {
 		for {
 			if c != nil && c.InputHandler != nil {
 				mt, msg, err := c.ReadMessage()
+				if err != nil {
+					return
+				}
 				if msg[0] != CONFIRMATION {
 					if !c.InputHandler(mt, msg, err, c) {
 						return
