@@ -12,7 +12,9 @@ import (
 //  `Y8b.    88    88 V8o88 8b      `8b  d8' 88~~~88 88`8b   
 //db   8D    88    88  V888 Y8b  d8  `8bd8'  88   88 88 `88. 
 //`8888Y'    YP    VP   V8P  `Y88P'    YP    YP   YP 88   YD 
-//                                                          
+//   
+
+//Syncronized Variable                                                       
 type SyncVar interface {
 	isDirty() bool
 	getData() []byte

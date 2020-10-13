@@ -13,7 +13,6 @@ func GetNewClient(name string) (cl *Client) {
 	cl = &Client{name: name}
 	return
 }
-
 type Client struct {
 	ws.Conn
 	name          string
@@ -22,7 +21,6 @@ type Client struct {
 	InputHandler  func(mt int, msg []byte, err error, c *Client) (alive bool)
 	sendMessage   []byte
 }
-
 func (c *Client) Send(bs []byte) {
 	c.sendMessage = bs
 	close(c.waiting)
@@ -49,15 +47,17 @@ func (c *Client) MakeConn(addr string) error {
 	go func() {
 		defer close(c.done)
 		for {
-			mt, msg, err := c.ReadMessage()
-			if !c.InputHandler(mt, msg, err, c) {
-				return
+			if c != nil && c.InputHandler != nil {
+				mt, msg, err := c.ReadMessage()
+				if !c.InputHandler(mt, msg, err, c) {
+					return
+				}
 			}
 		}
 	}()
 
 	//Send an initial message
-	err = c.WriteMessage(ws.TextMessage, []byte(NEWCONN))
+	err = c.WriteMessage(ws.TextMessage, []byte{NEWCONNECTION})
 	if err != nil {
 		return err
 	}
@@ -77,6 +77,7 @@ func (c *Client) MakeConn(addr string) error {
 						return
 					}
 					c.waiting = make(chan struct{})
+					c.sendMessage = nil
 				}
 			case <-c.interrupt:
 				c.CloseConn()
@@ -84,19 +85,15 @@ func (c *Client) MakeConn(addr string) error {
 			}
 		}
 	}()
+	time.Sleep(time.Millisecond)
 	return nil
 }
-
+//Should only be called with a delay
 func (c *Client) CloseConn() error {
-	// Cleanly close the connection by sending a close message and then
-	// waiting (with timeout) for the server to close the connection.
-	err := c.WriteMessage(ws.CloseMessage, []byte(CLOSECONN))
+	err := c.WriteMessage(ws.BinaryMessage, []byte{CLOSECONNECTION})
 	if err != nil {
 		return err
 	}
-	select {
-	case <-c.done:
-	case <-time.After(time.Second):
-	}
+	time.Sleep(time.Second)
 	return nil
 }
