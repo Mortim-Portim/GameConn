@@ -63,7 +63,7 @@ func (sv *SyncInt64) Type() byte {
 	return INT64SYNCED
 }
 func CeateSyncInt64(variable int64) *SyncInt64 {
-	return &SyncInt64{variable, false}
+	return &SyncInt64{variable, true}
 }
 
 // +-+-+-+-+-+-+-+-+-+-+-+
@@ -96,7 +96,7 @@ func (sv *SyncFloat64) Type() byte {
 	return FLOAT64SYNCED
 }
 func CeateSyncFloat64(variable float64) *SyncFloat64 {
-	return &SyncFloat64{variable, false}
+	return &SyncFloat64{variable, true}
 }
 
 // +-+-+-+-+-+-+-+-+-+-+
@@ -117,17 +117,14 @@ func (sv *SyncString) isDirty() bool {
 	return sv.dirty
 }
 func (sv *SyncString) getData() []byte {
-	buf := new(bytes.Buffer)
-	binary.Write(buf, binary.LittleEndian, sv.variable)
-	return buf.Bytes()
+	return []byte(sv.variable)
 }
 func (sv *SyncString) setData(variable []byte) {
-	buf := bytes.NewBuffer(variable)
-	binary.Read(buf, binary.LittleEndian, &sv.variable)
+	sv.variable = string(variable)
 }
 func (sv *SyncString) Type() byte {
 	return STRINGSYNCED
 }
 func CeateSyncString(variable string) *SyncString {
-	return &SyncString{variable, false}
+	return &SyncString{variable, true}
 }

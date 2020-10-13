@@ -12,6 +12,7 @@ type Server struct {
 	ConnToIdx	map[*ws.Conn]int
 	Connections map[int]chan struct{}
 	Data        map[int]([]byte)
+	Confirms	map[int]chan struct{}
 	connCounter int
 
 	upgrader     *ws.Upgrader
@@ -23,13 +24,15 @@ type Server struct {
 func GetNewServer() (s *Server) {
 	s = &Server{}
 	s.upgrader = &ws.Upgrader{}
-	s.ConnToIdx = make(map[*ws.Conn]int)
+	s.ConnToIdx = 	make(map[*ws.Conn]int)
 	s.Connections = make(map[int]chan struct{})
-	s.Data = make(map[int]([]byte))
+	s.Data = 		make(map[int]([]byte))
+	s.Confirms = 	make(map[int]chan struct{})
 	s.connCounter = 0
 	return
 }
 func (s *Server) Send(bs []byte, ci int) error {
+	s.Confirms[ci] = make(chan struct{})
 	s.Data[ci] = bs
 	ch, ok := s.Connections[ci]
 	if !ok {
@@ -37,6 +40,19 @@ func (s *Server) Send(bs []byte, ci int) error {
 	}
 	close(ch)
 	return nil
+}
+func (s *Server) WaitForConfirmation(ci int) {
+	<-s.Confirms[ci]
+}
+func (s *Server) WaitForConfirmations(ci ...int) {
+	for _,i := range(ci) {
+		s.WaitForConfirmation(i)
+	}
+}
+func (s *Server) WaitForAllConfirmations() {
+	for i := 0; i < s.connCounter; i++ {
+		s.WaitForConfirmation(i)
+	}
 }
 func (s *Server) SendToMultiple(bs []byte, ci ...int) error {
 	for _,i := range(ci) {
@@ -99,9 +115,15 @@ func (s *Server) home(w http.ResponseWriter, r *http.Request) {
 				s.OnCloseConn(c, mt, msg[1:], err, s)
 			}
 			return
+		} else if msg[0] == CONFIRMATION {
+			close(s.Confirms[s.ConnToIdx[c]])
 		} else {
 			if s.InputHandler != nil {
 				s.InputHandler(c, mt, msg, err, s)
+			}
+			err2 := c.WriteMessage(ws.BinaryMessage, []byte{CONFIRMATION})
+			if err2 != nil {
+				break
 			}
 		}
 	}

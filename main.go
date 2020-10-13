@@ -27,25 +27,30 @@ func main() {
 	}
 	
 	
-	syncVar := GC.CeateSyncInt64(0)
-	syncVar.SetInt(35)
-	servermanager.RegisterSyncVar(syncVar, "Fette Test Variable", servermanager.AllClients...)
+	syncVar1 := GC.CeateSyncInt64(35)
+	syncVar2 := GC.CeateSyncFloat64(35.35)
+	syncVar3 := GC.CeateSyncString("fünf und dreißig")
 	
-	//client.CloseConn()
+	servermanager.RegisterSyncVar(syncVar1, "Fette Test Int64 Variable", servermanager.AllClients...)
+	server.WaitForAllConfirmations()
 	
-	time.Sleep(time.Second)
+	servermanager.RegisterSyncVar(syncVar2, "Fette Test Float64 Variable", servermanager.AllClients...)
+	server.WaitForAllConfirmations()
+	
+	servermanager.RegisterSyncVar(syncVar3, "Fette Test String Variable", servermanager.AllClients...)
+	server.WaitForAllConfirmations()
+	
 	servermanager.UpdateSyncVars()
+	server.WaitForAllConfirmations()
 	
-	time.Sleep(time.Second)
-	fmt.Println(servermanager.GetHandler(0).SyncvarsByName["Fette Test Variable"].(*GC.SyncInt64).GetInt())
-	fmt.Println(clientmanager.SyncvarsByName["Fette Test Variable"].(*GC.SyncInt64).GetInt())
+	fmt.Println(len(servermanager.GetHandler(0).SyncvarsByName))
+	fmt.Println(len(clientmanager.SyncvarsByName))
 	
-	time.Sleep(time.Second)
-	clientmanager.DeleteSyncVar("Fette Test Variable")
+	clientmanager.DeleteSyncVar("Fette Test Int64 Variable")
+	client.WaitForConfirmation()
 	
-	time.Sleep(time.Second)
-	fmt.Println(servermanager.GetHandler(0).SyncvarsByName["Fette Test Variable"])
-	fmt.Println(clientmanager.SyncvarsByName["Fette Test Variable"])
+	fmt.Println(len(servermanager.GetHandler(0).SyncvarsByName))
+	fmt.Println(len(clientmanager.SyncvarsByName))
 
 	time.Sleep(time.Second * 3)
 	fmt.Println("finished")
@@ -60,7 +65,7 @@ func ServerNewConn(c *ws.Conn, mt int, msg []byte, err error, s *GC.Server) {
 
 }
 func ServerCloseConn(c *ws.Conn, mt int, msg []byte, err error, s *GC.Server) {
-	fmt.Println("Client Disconnected: ", c.RemoteAddr().String())
+	//fmt.Println("Client Disconnected: ", c.RemoteAddr().String())
 
 }
 

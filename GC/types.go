@@ -8,10 +8,13 @@ import (
 const (
 	NEWCONNECTION = 				byte(0)
 	CLOSECONNECTION = 				byte(1)
+	
 	SYNCVAR_REGISTRY = 				byte(2)
 	SYNCVAR_REGISTRY_CONFIRMATION =	byte(3)
 	SYNCVAR_UPDATE = 				byte(4)
 	SYNCVAR_DELETION =				byte(5)
+	
+	CONFIRMATION =					byte(6)
 )
 
 const (

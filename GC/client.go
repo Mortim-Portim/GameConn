@@ -10,7 +10,7 @@ import (
 )
 
 func GetNewClient(name string) (cl *Client) {
-	cl = &Client{name: name}
+	cl = &Client{name: name, confirmed:false}
 	return
 }
 type Client struct {
@@ -20,10 +20,18 @@ type Client struct {
 	interrupt     chan os.Signal
 	InputHandler  func(mt int, msg []byte, err error, c *Client) (alive bool)
 	sendMessage   []byte
+	confirmed	  bool
 }
 func (c *Client) Send(bs []byte) {
+	c.confirmed = false
 	c.sendMessage = bs
 	close(c.waiting)
+}
+func (c *Client) WaitForConfirmation() {
+	for !c.confirmed {
+		
+	}
+	return
 }
 
 //addr := "localhost:8080"
@@ -49,8 +57,16 @@ func (c *Client) MakeConn(addr string) error {
 		for {
 			if c != nil && c.InputHandler != nil {
 				mt, msg, err := c.ReadMessage()
-				if !c.InputHandler(mt, msg, err, c) {
-					return
+				if msg[0] != CONFIRMATION {
+					if !c.InputHandler(mt, msg, err, c) {
+						return
+					}
+					err2 := c.WriteMessage(ws.BinaryMessage, []byte{CONFIRMATION})
+					if err2 != nil {
+						return
+					}
+				}else{
+					c.confirmed = true
 				}
 			}
 		}
