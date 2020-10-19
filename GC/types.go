@@ -1,7 +1,6 @@
 package GC
 
 import (
-	"fmt"
 	ws "github.com/gorilla/websocket"
 )
 
@@ -15,6 +14,10 @@ const (
 	SYNCVAR_DELETION =				byte(5)
 	
 	CONFIRMATION =					byte(6)
+	
+	BINARYMSG = 					byte(7)
+	
+	MESSAGE_TYPES = 				byte(8)
 )
 
 const (
@@ -37,7 +40,6 @@ func DeleteInt(fast bool, i int, src ...int) (dst []int) {
 }
 
 func DeleteConn(fast bool, cnn *ws.Conn, src ...*ws.Conn) (dst []*ws.Conn) {
-	fmt.Println([]*ws.Conn{cnn}, ":", src)
 	for i,c := range(src) {
 		if c == cnn {
 			if fast {
@@ -49,6 +51,5 @@ func DeleteConn(fast bool, cnn *ws.Conn, src ...*ws.Conn) (dst []*ws.Conn) {
 			}
 		}
 	}
-	fmt.Println(dst)
 	return
 }

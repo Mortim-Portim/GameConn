@@ -1,6 +1,7 @@
 package GC
 
 import (
+	"log"
 	"time"
 	"errors"
 	"net/http"
@@ -106,6 +107,13 @@ func (s *Server) home(w http.ResponseWriter, r *http.Request) {
 	defer c.Close()
 	for {
 		mt, msg, err := c.ReadMessage()
+		if err != nil {
+			log.Printf("Error: %v, msg: %v, mt: %v\n", err, msg, mt)
+			if s.OnCloseConn != nil {
+				s.OnCloseConn(c, mt, msg, err, s)
+			}
+			break
+		}
 		if msg[0] == NEWCONNECTION {
 			if s.OnNewConn != nil {
 				s.OnNewConn(c, mt, msg[1:], err, s)
