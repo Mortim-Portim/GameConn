@@ -3,6 +3,7 @@ package GC
 import (
 	"bytes"
 	"encoding/binary"
+	cmp "marvin/GraphEng/Compression"
 )
 
 //
@@ -31,6 +32,9 @@ func InitSyncVarStandardTypes() {
 	RegisteredSyncVarTypes[INT64SYNCED] = func()(SyncVar){return &SyncInt64{}}
 	RegisteredSyncVarTypes[FLOAT64SYNCED] = func()(SyncVar){return &SyncFloat64{}}
 	RegisteredSyncVarTypes[STRINGSYNCED] = func()(SyncVar){return &SyncString{}}
+	RegisteredSyncVarTypes[INT16SYNCED] = func()(SyncVar){return &SyncInt16{}}
+	RegisteredSyncVarTypes[BOOLSYNCED] = func()(SyncVar){return &SyncBool{}}
+	RegisteredSyncVarTypes[BYTESYNCED] = func()(SyncVar){return &SyncByte{}}
 }
 
 func GetSyncVarOfType(t byte) SyncVar {
@@ -68,6 +72,96 @@ func (sv *SyncInt64) Type() byte {
 }
 func CeateSyncInt64(variable int64) *SyncInt64 {
 	return &SyncInt64{variable, true}
+}
+
+// +-+-+-+-+-+-+-+-+-+
+// |S|y|n|c|I|n|t|1|6|
+// +-+-+-+-+-+-+-+-+-+
+type SyncInt16 struct {
+	variable int16
+	dirty    bool
+}
+func (sv *SyncInt16) SetInt(i int16) {
+	sv.variable = i
+	sv.dirty = true
+}
+func (sv *SyncInt16) GetInt() int16 {
+	return sv.variable
+}
+func (sv *SyncInt16) IsDirty() bool {
+	return sv.dirty
+}
+func (sv *SyncInt16) GetData() []byte {
+	return cmp.Int16ToBytes(sv.variable)
+}
+func (sv *SyncInt16) SetData(variable []byte) {
+	sv.variable = cmp.BytesToInt16(variable)
+}
+func (sv *SyncInt16) Type() byte {
+	return INT16SYNCED
+}
+func CeateSyncInt16(variable int16) *SyncInt16 {
+	return &SyncInt16{variable, true}
+}
+
+// +-+-+-+-+-+-+-+-+
+// |S|y|n|c|B|o|o|l|
+// +-+-+-+-+-+-+-+-+
+type SyncBool struct {
+	variable bool
+	dirty    bool
+}
+func (sv *SyncBool) SetBool(i bool) {
+	sv.variable = i
+	sv.dirty = true
+}
+func (sv *SyncBool) GetBool() bool {
+	return sv.variable
+}
+func (sv *SyncBool) IsDirty() bool {
+	return sv.dirty
+}
+func (sv *SyncBool) GetData() []byte {
+	return []byte{cmp.BoolToByte(sv.variable)}
+}
+func (sv *SyncBool) SetData(variable []byte) {
+	sv.variable = cmp.ByteToBool(variable[0])
+}
+func (sv *SyncBool) Type() byte {
+	return BOOLSYNCED
+}
+func CeateSyncBool(variable bool) *SyncBool {
+	return &SyncBool{variable, true}
+}
+
+// +-+-+-+-+-+-+-+-+
+// |S|y|n|c|B|y|t|e|
+// +-+-+-+-+-+-+-+-+
+type SyncByte struct {
+	variable byte
+	dirty    bool
+}
+func (sv *SyncByte) SetByte(i byte) {
+	sv.variable = i
+	sv.dirty = true
+}
+func (sv *SyncByte) GetByte() byte {
+	return sv.variable
+}
+func (sv *SyncByte) IsDirty() bool {
+	return sv.dirty
+}
+func (sv *SyncByte) GetData() []byte {
+	return []byte{sv.variable}
+}
+func (sv *SyncByte) SetData(variable []byte) {
+	sv.variable = variable[0]
+}
+func (sv *SyncByte) Type() byte {
+	return BYTESYNCED
+}
+func CeateSyncByte(variable byte) *SyncByte {
+	return &SyncByte{variable, true}
 }
 
 // +-+-+-+-+-+-+-+-+-+-+-+
