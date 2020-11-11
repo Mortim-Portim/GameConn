@@ -84,8 +84,8 @@ func main() {
 	
 	//Creates three syncvars
 	syncVar1 := &Point{&Pnt{25.3}, true}
-	syncVar2 := GC.CeateSyncFloat64(35.35)
-	syncVar3 := GC.CeateSyncString("fünf und dreißig")
+	syncVar2 := GC.CreateSyncFloat64(35.35)
+	syncVar3 := GC.CreateSyncString("fünf und dreißig")
 	
 	//Registers a syncvar and waits for the managers to finish communication
 	servermanager.RegisterSyncVar(syncVar1, "Fette Test Point Variable", servermanager.AllClients...)

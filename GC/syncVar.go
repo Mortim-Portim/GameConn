@@ -29,12 +29,12 @@ func RegisterSyncVar(idx byte, factory func()(SyncVar)) {
 }
 func InitSyncVarStandardTypes() {
 	RegisteredSyncVarTypes = make(map[byte](func()(SyncVar)))
-	RegisteredSyncVarTypes[INT64SYNCED] = func()(SyncVar){return &SyncInt64{}}
-	RegisteredSyncVarTypes[FLOAT64SYNCED] = func()(SyncVar){return &SyncFloat64{}}
-	RegisteredSyncVarTypes[STRINGSYNCED] = func()(SyncVar){return &SyncString{}}
-	RegisteredSyncVarTypes[INT16SYNCED] = func()(SyncVar){return &SyncInt16{}}
-	RegisteredSyncVarTypes[BOOLSYNCED] = func()(SyncVar){return &SyncBool{}}
-	RegisteredSyncVarTypes[BYTESYNCED] = func()(SyncVar){return &SyncByte{}}
+	RegisteredSyncVarTypes[INT64SYNCED] = func()(SyncVar){return CreateSyncInt64(0)}
+	RegisteredSyncVarTypes[FLOAT64SYNCED] = func()(SyncVar){return CreateSyncFloat64(0)}
+	RegisteredSyncVarTypes[STRINGSYNCED] = func()(SyncVar){return CreateSyncString("")}
+	RegisteredSyncVarTypes[INT16SYNCED] = func()(SyncVar){return CreateSyncInt16(0)}
+	RegisteredSyncVarTypes[BOOLSYNCED] = func()(SyncVar){return CreateSyncBool(false)}
+	RegisteredSyncVarTypes[BYTESYNCED] = func()(SyncVar){return CreateSyncByte(0)}
 }
 
 func GetSyncVarOfType(t byte) SyncVar {
@@ -70,7 +70,7 @@ func (sv *SyncInt64) SetData(variable []byte) {
 func (sv *SyncInt64) Type() byte {
 	return INT64SYNCED
 }
-func CeateSyncInt64(variable int64) *SyncInt64 {
+func CreateSyncInt64(variable int64) *SyncInt64 {
 	return &SyncInt64{variable, true}
 }
 
@@ -100,7 +100,7 @@ func (sv *SyncInt16) SetData(variable []byte) {
 func (sv *SyncInt16) Type() byte {
 	return INT16SYNCED
 }
-func CeateSyncInt16(variable int16) *SyncInt16 {
+func CreateSyncInt16(variable int16) *SyncInt16 {
 	return &SyncInt16{variable, true}
 }
 
@@ -130,7 +130,7 @@ func (sv *SyncBool) SetData(variable []byte) {
 func (sv *SyncBool) Type() byte {
 	return BOOLSYNCED
 }
-func CeateSyncBool(variable bool) *SyncBool {
+func CreateSyncBool(variable bool) *SyncBool {
 	return &SyncBool{variable, true}
 }
 
@@ -160,7 +160,7 @@ func (sv *SyncByte) SetData(variable []byte) {
 func (sv *SyncByte) Type() byte {
 	return BYTESYNCED
 }
-func CeateSyncByte(variable byte) *SyncByte {
+func CreateSyncByte(variable byte) *SyncByte {
 	return &SyncByte{variable, true}
 }
 
@@ -193,7 +193,7 @@ func (sv *SyncFloat64) SetData(variable []byte) {
 func (sv *SyncFloat64) Type() byte {
 	return FLOAT64SYNCED
 }
-func CeateSyncFloat64(variable float64) *SyncFloat64 {
+func CreateSyncFloat64(variable float64) *SyncFloat64 {
 	return &SyncFloat64{variable, true}
 }
 
@@ -223,6 +223,6 @@ func (sv *SyncString) SetData(variable []byte) {
 func (sv *SyncString) Type() byte {
 	return STRINGSYNCED
 }
-func CeateSyncString(variable string) *SyncString {
+func CreateSyncString(variable string) *SyncString {
 	return &SyncString{variable, true}
 }
