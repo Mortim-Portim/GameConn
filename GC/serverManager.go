@@ -1,11 +1,6 @@
 package GC
 
 import (
-<<<<<<< HEAD
-	"log"
-
-=======
->>>>>>> 456c3c49985631ae50ebbadad26d55fdf44797af
 	ws "github.com/gorilla/websocket"
 	cmp "github.com/mortim-portim/GraphEng/Compression"
 )
@@ -29,17 +24,10 @@ type ClientHandler struct {
 }
 
 func (ch *ClientHandler) RegisterSyncVar(sv SyncVar, name string) {
-<<<<<<< HEAD
-	log.Printf("#####Server: Creating SyncVar with ID=%v, name='%s', type=%v , initiated by self=%s", ch.idCounter, name, sv.Type(), ch.Conn.LocalAddr().String())
+	printLogF("#####Server: Creating SyncVar with ID=%v, name='%s', type=%v , initiated by self=%s", ch.idCounter, name, sv.Type(), ch.Conn.LocalAddr().String())
 	ch.SyncvarsByName[name] = sv
 	ch.SyncvarsByID[ch.idCounter] = sv
 	ch.NameToID[name] = ch.idCounter
-=======
-	printLogF("#####Server: Creating SyncVar with ID=%v, name='%s', type=%v , initiated by self=%s", ch.idCounter, name, sv.Type(), ch.Conn.LocalAddr().String())
-	ch.SyncvarsByName[name] 		= sv
-	ch.SyncvarsByID[ch.idCounter] 	= sv
-	ch.NameToID[name] 				= ch.idCounter
->>>>>>> 456c3c49985631ae50ebbadad26d55fdf44797af
 	resp := append(append([]byte{SYNCVAR_REGISTRY, sv.Type(), byte(len(name))}, []byte(name)...), cmp.Int16ToBytes(int16(ch.idCounter))...)
 	ch.Server.Send(resp, ch.Server.ConnToIdx[ch.Conn])
 	ch.idCounter++
@@ -96,13 +84,8 @@ func (ch *ClientHandler) processSyncVarRegistry(data []byte) {
 	ch.NameToID[name] = id
 	resp := append(append([]byte{SYNCVAR_REGISTRY_CONFIRMATION, byte(len(name))}, []byte(name)...), cmp.Int16ToBytes(int16(id))...)
 	ch.Server.Send(resp, ch.Server.ConnToIdx[ch.Conn])
-<<<<<<< HEAD
 	ch.idCounter++
-	log.Printf("#####Server: Creating SyncVar with ID=%v, name='%s' , initiated by client=%s", id, name, ch.Conn.RemoteAddr().String())
-=======
-	ch.idCounter ++
 	printLogF("#####Server: Creating SyncVar with ID=%v, name='%s' , initiated by client=%s", id, name, ch.Conn.RemoteAddr().String())
->>>>>>> 456c3c49985631ae50ebbadad26d55fdf44797af
 }
 
 func GetServerManager(s *Server) (sm *ServerManager) {

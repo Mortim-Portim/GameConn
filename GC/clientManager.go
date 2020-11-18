@@ -1,8 +1,6 @@
 package GC
 
 import (
-	"log"
-
 	cmp "github.com/mortim-portim/GraphEng/Compression"
 )
 
@@ -126,13 +124,8 @@ func (m *ClientManager) onSyncVarUpdateC(data []byte) {
 	for true {
 		id := int(cmp.BytesToInt16(data[:2]))
 		l := cmp.BytesToInt16(data[2:4])
-<<<<<<< HEAD
 		dat := data[4 : 4+l]
-		log.Printf(".....Client: Updating SyncVar with ID=%v: len(dat)=%v, initiated by server=%s", id, l, m.Client.RemoteAddr().String())
-=======
-		dat := data[4:4+l]
 		printLogF(".....Client: Updating SyncVar with ID=%v: len(dat)=%v, initiated by server=%s", id, l, m.Client.RemoteAddr().String())
->>>>>>> 456c3c49985631ae50ebbadad26d55fdf44797af
 		data = data[4+l:]
 		m.SyncvarsByID[id].SetData(dat)
 		if len(data) <= 0 {
