@@ -101,8 +101,6 @@ func main() {
 	servermanager.UpdateSyncVars()
 	server.WaitForAllConfirmations()
 	
-	client.CloseConn()
-	
 	//Prints the Point syncvar of the server and client
 	fmt.Println(servermanager.GetHandler(0).SyncvarsByName["Fette Test Point Variable"])
 	fmt.Println(clientmanager.SyncvarsByName["Fette Test Point Variable"])
@@ -115,6 +113,7 @@ func main() {
 	fmt.Println(servermanager.GetHandler(0).SyncvarsByName)
 	fmt.Println(clientmanager.SyncvarsByName)
 
+	client.CloseConn()
 	fmt.Println("finished")
 }
 
