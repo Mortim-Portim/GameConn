@@ -126,6 +126,7 @@ func main() {
 	fmt.Println(servermanager.GetHandler(0).SyncvarsByName)
 	fmt.Println(clientmanager.SyncvarsByName)
 
+	client.CloseConn()
 	fmt.Println("finished")
 }
 

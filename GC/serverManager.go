@@ -1,8 +1,11 @@
 package GC
 
 import (
+<<<<<<< HEAD
 	"log"
 
+=======
+>>>>>>> 456c3c49985631ae50ebbadad26d55fdf44797af
 	ws "github.com/gorilla/websocket"
 	cmp "github.com/mortim-portim/GraphEng/Compression"
 )
@@ -26,10 +29,17 @@ type ClientHandler struct {
 }
 
 func (ch *ClientHandler) RegisterSyncVar(sv SyncVar, name string) {
+<<<<<<< HEAD
 	log.Printf("#####Server: Creating SyncVar with ID=%v, name='%s', type=%v , initiated by self=%s", ch.idCounter, name, sv.Type(), ch.Conn.LocalAddr().String())
 	ch.SyncvarsByName[name] = sv
 	ch.SyncvarsByID[ch.idCounter] = sv
 	ch.NameToID[name] = ch.idCounter
+=======
+	printLogF("#####Server: Creating SyncVar with ID=%v, name='%s', type=%v , initiated by self=%s", ch.idCounter, name, sv.Type(), ch.Conn.LocalAddr().String())
+	ch.SyncvarsByName[name] 		= sv
+	ch.SyncvarsByID[ch.idCounter] 	= sv
+	ch.NameToID[name] 				= ch.idCounter
+>>>>>>> 456c3c49985631ae50ebbadad26d55fdf44797af
 	resp := append(append([]byte{SYNCVAR_REGISTRY, sv.Type(), byte(len(name))}, []byte(name)...), cmp.Int16ToBytes(int16(ch.idCounter))...)
 	ch.Server.Send(resp, ch.Server.ConnToIdx[ch.Conn])
 	ch.idCounter++
@@ -42,7 +52,7 @@ func (ch *ClientHandler) UpdateSyncVars() {
 			data := append(cmp.Int16ToBytes(int16(len(syncDat))), syncDat...)
 			payload := append(cmp.Int16ToBytes(int16(id)), data...)
 			var_data = append(var_data, payload...)
-			log.Printf("#####Server: Updating SyncVar with ID=%v: len(dat)=%v, initiated by self=%s", id, len(syncDat), ch.Conn.LocalAddr().String())
+			printLogF("#####Server: Updating SyncVar with ID=%v: len(dat)=%v, initiated by self=%s", id, len(syncDat), ch.Conn.LocalAddr().String())
 		}
 	}
 	if len(var_data) > 1 {
@@ -51,7 +61,7 @@ func (ch *ClientHandler) UpdateSyncVars() {
 }
 func (ch *ClientHandler) DeleteSyncVar(name string) {
 	id := ch.NameToID[name]
-	log.Printf("#####Server: Deleting SyncVar with ID=%v, name='%s', initiated by self=%s", id, name, ch.Conn.LocalAddr().String())
+	printLogF("#####Server: Deleting SyncVar with ID=%v, name='%s', initiated by self=%s", id, name, ch.Conn.LocalAddr().String())
 	ch.deleteSyncVarLocal(name, id)
 	ch.deleteSyncVarRemote(name, id)
 }
@@ -74,7 +84,7 @@ func (ch *ClientHandler) onSyncVarUpdateC(data []byte) {
 		if len(data) <= 0 {
 			break
 		}
-		log.Printf("#####Server: Updating SyncVar with ID=%v: len(dat)=%v, initiated by client=%s", id, l, ch.Conn.RemoteAddr().String())
+		printLogF("#####Server: Updating SyncVar with ID=%v: len(dat)=%v, initiated by client=%s", id, l, ch.Conn.RemoteAddr().String())
 	}
 }
 func (ch *ClientHandler) processSyncVarRegistry(data []byte) {
@@ -86,8 +96,13 @@ func (ch *ClientHandler) processSyncVarRegistry(data []byte) {
 	ch.NameToID[name] = id
 	resp := append(append([]byte{SYNCVAR_REGISTRY_CONFIRMATION, byte(len(name))}, []byte(name)...), cmp.Int16ToBytes(int16(id))...)
 	ch.Server.Send(resp, ch.Server.ConnToIdx[ch.Conn])
+<<<<<<< HEAD
 	ch.idCounter++
 	log.Printf("#####Server: Creating SyncVar with ID=%v, name='%s' , initiated by client=%s", id, name, ch.Conn.RemoteAddr().String())
+=======
+	ch.idCounter ++
+	printLogF("#####Server: Creating SyncVar with ID=%v, name='%s' , initiated by client=%s", id, name, ch.Conn.RemoteAddr().String())
+>>>>>>> 456c3c49985631ae50ebbadad26d55fdf44797af
 }
 
 func GetServerManager(s *Server) (sm *ServerManager) {
@@ -143,7 +158,7 @@ func (m *ServerManager) receive(c *ws.Conn, mt int, msg []byte, err error, s *Se
 		id := int(cmp.BytesToInt16(msg[1:3]))
 		name := string(msg[3:])
 		m.Handler[c].deleteSyncVarLocal(name, id)
-		log.Printf("#####Server: Deleting SyncVar with ID=%v, name='%s' , initiated by client=%s", id, name, c.RemoteAddr().String())
+		printLogF("#####Server: Deleting SyncVar with ID=%v, name='%s' , initiated by client=%s", id, name, c.RemoteAddr().String())
 	}
 	if m.InputHandler != nil {
 		go m.InputHandler(c, mt, msg, err, s)
