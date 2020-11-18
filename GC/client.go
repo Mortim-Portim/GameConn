@@ -10,17 +10,19 @@ import (
 )
 
 func GetNewClient() (cl *Client) {
-	cl = &Client{confirmed:false}
+	cl = &Client{confirmed: false}
 	return
 }
+
 type Client struct {
 	ws.Conn
 	done, waiting chan struct{}
 	interrupt     chan os.Signal
 	InputHandler  func(mt int, msg []byte, err error, c *Client) (alive bool)
 	sendMessage   []byte
-	confirmed	  bool
+	confirmed     bool
 }
+
 func (c *Client) Send(bs []byte) {
 	c.confirmed = false
 	c.sendMessage = bs
@@ -28,7 +30,7 @@ func (c *Client) Send(bs []byte) {
 }
 func (c *Client) WaitForConfirmation() {
 	for !c.confirmed {
-		
+
 	}
 	return
 }
@@ -67,7 +69,7 @@ func (c *Client) MakeConn(addr string) error {
 					if err2 != nil {
 						return
 					}
-				}else{
+				} else {
 					c.confirmed = true
 				}
 			}
@@ -106,6 +108,7 @@ func (c *Client) MakeConn(addr string) error {
 	time.Sleep(time.Millisecond)
 	return nil
 }
+
 //Should only be called with a delay
 func (c *Client) CloseConn() error {
 	err := c.WriteMessage(ws.BinaryMessage, []byte{CLOSECONNECTION})

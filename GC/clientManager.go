@@ -2,10 +2,11 @@ package GC
 
 import (
 	"log"
-	cmp "marvin/GraphEng/Compression"
+
+	cmp "github.com/mortim-portim/GraphEng/Compression"
 )
 
-/**
+/*
 Protocoll:
 Client registers SyncVar -> 		Payload:
 [SYNCVAR_REGISTRY 				| SyncVar.Type() 		| (n){name of SyncVar}]													len() = 2+n
@@ -22,24 +23,27 @@ SyncVars Update by Client/Server -> Payload:
 
 SyncVar Delete -> 					Payload:
 [SYNCVAR_DELETION				| (2){id} 				| (n){name}]															len() = 2+n
-**/
+*/
+//
 
 func GetClientManager(c *Client) (cm *ClientManager) {
-	cm = &ClientManager{Client:c}
-	cm.SyncvarsByID = 	make(map[int]SyncVar)
+	cm = &ClientManager{Client: c}
+	cm.SyncvarsByID = make(map[int]SyncVar)
 	cm.SyncvarsByName = make(map[string]SyncVar)
-	cm.NameToID	=		make(map[string]int)
-	c.InputHandler = 	cm.receive
+	cm.NameToID = make(map[string]int)
+	c.InputHandler = cm.receive
 	return
 }
+
 type ClientManager struct {
-	Client			*Client
-	SyncvarsByID	map[int]SyncVar
-	SyncvarsByName	map[string]SyncVar
-	NameToID		map[string]int
-	
-	InputHandler  func(mt int, msg []byte, err error, c *Client) (alive bool)
+	Client         *Client
+	SyncvarsByID   map[int]SyncVar
+	SyncvarsByName map[string]SyncVar
+	NameToID       map[string]int
+
+	InputHandler func(mt int, msg []byte, err error, c *Client) (alive bool)
 }
+
 func (m *ClientManager) RegisterSyncVar(sv SyncVar, name string) {
 	if m.SyncvarsByID == nil {
 		m.SyncvarsByID = make(map[int]SyncVar)
@@ -53,7 +57,7 @@ func (m *ClientManager) RegisterSyncVar(sv SyncVar, name string) {
 }
 func (m *ClientManager) UpdateSyncVars() {
 	var_data := []byte{SYNCVAR_UPDATE}
-	for id,sv := range(m.SyncvarsByID) {
+	for id, sv := range m.SyncvarsByID {
 		if sv.IsDirty() {
 			syncDat := sv.GetData()
 			log.Printf(".....Client: Updating SyncVar with ID=%v: len(dat)=%v, initiated by self=%s", id, len(syncDat), m.Client.LocalAddr().String())
@@ -87,18 +91,18 @@ func (m *ClientManager) receive(mt int, input []byte, err error, c *Client) bool
 	}
 	if input[0] == SYNCVAR_REGISTRY_CONFIRMATION {
 		m.processRegisterVarConfirm(input[1:])
-	}else if input[0] == SYNCVAR_REGISTRY {
+	} else if input[0] == SYNCVAR_REGISTRY {
 		l := input[2]
 		t := input[1]
-		name := string(input[3:3+l])
+		name := string(input[3 : 3+l])
 		id := int(cmp.BytesToInt16(input[3+l:]))
 		log.Printf(".....Client: Creating SyncVar with ID=%v, name='%s' , initiated by server=%s", id, name, m.Client.RemoteAddr().String())
 		m.SyncvarsByName[name] = GetSyncVarOfType(t)
 		m.SyncvarsByID[id] = m.SyncvarsByName[name]
 		m.NameToID[name] = id
-	}else if input[0] == SYNCVAR_UPDATE {
+	} else if input[0] == SYNCVAR_UPDATE {
 		m.onSyncVarUpdateC(input[1:])
-	}else if input[0] == SYNCVAR_DELETION {
+	} else if input[0] == SYNCVAR_DELETION {
 		id := int(cmp.BytesToInt16(input[1:3]))
 		name := string(input[3:])
 		m.deleteSyncVarLocal(name, id)
@@ -110,7 +114,8 @@ func (m *ClientManager) receive(mt int, input []byte, err error, c *Client) bool
 	return true
 }
 func (m *ClientManager) processRegisterVarConfirm(data []byte) {
-	l := data[0]; data = data[1:]
+	l := data[0]
+	data = data[1:]
 	name := string(data[:l])
 	id := int(cmp.BytesToInt16(data[l:]))
 	m.SyncvarsByID[id] = m.SyncvarsByName[name]
@@ -121,7 +126,7 @@ func (m *ClientManager) onSyncVarUpdateC(data []byte) {
 	for true {
 		id := int(cmp.BytesToInt16(data[:2]))
 		l := cmp.BytesToInt16(data[2:4])
-		dat := data[4:4+l]
+		dat := data[4 : 4+l]
 		log.Printf(".....Client: Updating SyncVar with ID=%v: len(dat)=%v, initiated by server=%s", id, l, m.Client.RemoteAddr().String())
 		data = data[4+l:]
 		m.SyncvarsByID[id].SetData(dat)
