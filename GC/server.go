@@ -9,6 +9,9 @@ import (
 	ws "github.com/gorilla/websocket"
 )
 
+const ARTIFICIAL_RECEIVE_LATENCY = time.Millisecond*15
+const ARTIFICIAL_SENDING_LATENCY = time.Millisecond*15
+
 type Server struct {
 	ConnToIdx	map[*ws.Conn]int
 	Connections map[int]chan struct{}
@@ -33,6 +36,7 @@ func GetNewServer() (s *Server) {
 	return
 }
 func (s *Server) Send(bs []byte, ci int) error {
+	time.Sleep(ARTIFICIAL_SENDING_LATENCY)
 	s.Confirms[ci] = make(chan struct{})
 	s.Data[ci] = bs
 	ch, ok := s.Connections[ci]
@@ -107,6 +111,7 @@ func (s *Server) home(w http.ResponseWriter, r *http.Request) {
 	defer c.Close()
 	for {
 		mt, msg, err := c.ReadMessage()
+		time.Sleep(ARTIFICIAL_RECEIVE_LATENCY)
 		if err != nil {
 			log.Printf("Error: %v, msg: %v, mt: %v\n", err, msg, mt)
 			if s.OnCloseConn != nil {

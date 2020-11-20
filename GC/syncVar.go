@@ -239,3 +239,38 @@ func (sv *SyncString) Type() byte {
 func CreateSyncString(variable string) *SyncString {
 	return &SyncString{variable, true}
 }
+
+//TODO
+/**
+// +-+-+-+-+-+-+-+-+-+
+// |S|y|n|c|S|t|a|c|k|
+// +-+-+-+-+-+-+-+-+-+
+type SyncStack struct {
+	bytes [][]byte
+	dirty    bool
+}
+func (sv *SyncString) SetString(i string) {
+	sv.variable = i
+	sv.dirty = true
+}
+func (sv *SyncString) GetString() string {
+	return sv.variable
+}
+func (sv *SyncString) IsDirty() bool {
+	return sv.dirty
+}
+func (sv *SyncString) GetData() []byte {
+	sv.dirty = false
+	return []byte(sv.variable)
+}
+func (sv *SyncString) SetData(variable []byte) {
+	sv.dirty = false
+	sv.variable = string(variable)
+}
+func (sv *SyncString) Type() byte {
+	return STRINGSYNCED
+}
+func CreateSyncString(variable string) *SyncString {
+	return &SyncString{variable, true}
+}
+**/
