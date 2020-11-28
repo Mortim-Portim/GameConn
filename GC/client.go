@@ -5,12 +5,11 @@ import (
 	"os"
 	"os/signal"
 	"time"
-
 	ws "github.com/gorilla/websocket"
 )
 
 func GetNewClient() (cl *Client) {
-	cl = &Client{confirmed:false}
+	cl = &Client{confirmed:make(chan bool)}
 	return
 }
 type Client struct {
@@ -19,16 +18,19 @@ type Client struct {
 	interrupt     chan os.Signal
 	InputHandler  func(mt int, msg []byte, err error, c *Client) (alive bool)
 	sendMessage   []byte
-	confirmed	  bool
+	confirmed	  chan bool
+	pendingConfirms int
 }
 func (c *Client) Send(bs []byte) {
-	c.confirmed = false
+	time.Sleep(ARTIFICIAL_CLIENT_PING)
+	c.pendingConfirms ++
 	c.sendMessage = bs
 	close(c.waiting)
 }
 func (c *Client) WaitForConfirmation() {
-	for !c.confirmed {
-		
+	for c.pendingConfirms > 0 {
+		<-c.confirmed
+		c.pendingConfirms --
 	}
 	return
 }
@@ -48,6 +50,24 @@ func (c *Client) MakeConn(addr string) error {
 		return err
 	}
 	c.Conn = *c_tmp
+	
+//	c.Conn.SetPingHandler(func(appData string) error {
+//		log.Println("Client Ping")
+//		err := c.WriteControl(ws.PongMessage, []byte(appData), time.Now().Add(time.Second))
+//		if err == ws.ErrCloseSent {
+//			return nil
+//		} else if e, ok := err.(net.Error); ok && e.Temporary() {
+//			return nil
+//		}
+//		return err
+//	})
+	c.Conn.SetPongHandler(func(appData string) error {
+		if c.confirmed != nil {
+			c.confirmed <- true
+		}
+		
+		return nil
+	})
 
 	//receive input in a separate thread
 	c.done = make(chan struct{})
@@ -59,16 +79,12 @@ func (c *Client) MakeConn(addr string) error {
 				if err != nil {
 					return
 				}
-				if msg[0] != CONFIRMATION {
-					if !c.InputHandler(mt, msg, err, c) {
-						return
-					}
-					err2 := c.WriteMessage(ws.BinaryMessage, []byte{CONFIRMATION})
-					if err2 != nil {
-						return
-					}
-				}else{
-					c.confirmed = true
+				if !c.InputHandler(mt, msg, err, c) {
+					return
+				}
+				err2 := c.WriteMessage(ws.PongMessage, []byte{})
+				if err2 != nil {
+					return
 				}
 			}
 		}

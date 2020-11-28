@@ -19,6 +19,7 @@ import (
 //Syncronized Variable                                                       
 type SyncVar interface {
 	IsDirty() bool
+	MakeDirty()
 	GetData() []byte
 	SetData([]byte)
 	Type() byte
@@ -36,6 +37,7 @@ func InitSyncVarStandardTypes() {
 	RegisteredSyncVarTypes[INT16SYNCED] = func()(SyncVar){return CreateSyncInt16(0)}
 	RegisteredSyncVarTypes[BOOLSYNCED] = func()(SyncVar){return CreateSyncBool(false)}
 	RegisteredSyncVarTypes[BYTESYNCED] = func()(SyncVar){return CreateSyncByte(0)}
+	RegisteredSyncVarTypes[BYTECOORDSYNCED] = func()(SyncVar){return CreateSyncByteCoord(0,0)}
 }
 
 func GetSyncVarOfType(t byte) SyncVar {
@@ -58,6 +60,9 @@ func (sv *SyncInt64) GetInt() int64 {
 }
 func (sv *SyncInt64) IsDirty() bool {
 	return sv.dirty
+}
+func (sv *SyncInt64) MakeDirty() {
+	sv.dirty = true
 }
 func (sv *SyncInt64) GetData() []byte {
 	sv.dirty = false
@@ -94,6 +99,9 @@ func (sv *SyncInt16) GetInt() int16 {
 func (sv *SyncInt16) IsDirty() bool {
 	return sv.dirty
 }
+func (sv *SyncInt16) MakeDirty() {
+	sv.dirty = true
+}
 func (sv *SyncInt16) GetData() []byte {
 	sv.dirty = false
 	return cmp.Int16ToBytes(sv.variable)
@@ -125,6 +133,9 @@ func (sv *SyncBool) GetBool() bool {
 }
 func (sv *SyncBool) IsDirty() bool {
 	return sv.dirty
+}
+func (sv *SyncBool) MakeDirty() {
+	sv.dirty = true
 }
 func (sv *SyncBool) GetData() []byte {
 	sv.dirty = false
@@ -158,6 +169,9 @@ func (sv *SyncByte) GetByte() byte {
 func (sv *SyncByte) IsDirty() bool {
 	return sv.dirty
 }
+func (sv *SyncByte) MakeDirty() {
+	sv.dirty = true
+}
 func (sv *SyncByte) GetData() []byte {
 	sv.dirty = false
 	return []byte{sv.variable}
@@ -171,6 +185,50 @@ func (sv *SyncByte) Type() byte {
 }
 func CreateSyncByte(variable byte) *SyncByte {
 	return &SyncByte{variable, true}
+}
+
+// +-+-+-+-+-+-+-+-+-+-+-+-+-+
+// |S|y|n|c|B|y|t|e|C|o|o|r|d|
+// +-+-+-+-+-+-+-+-+-+-+-+-+-+
+type SyncByteCoord struct {
+	x,y int8
+	dirty    bool
+}
+func (sv *SyncByteCoord) Move(dx,dy int8) {
+	if dx != 0 || dy != 0 {
+		sv.x += dx; sv.y += dy
+		sv.dirty = true
+	}
+}
+func (sv *SyncByteCoord) Set(x,y int8) {
+	if x != sv.x || y != sv.y {
+		sv.x = x; sv.y = y
+		sv.dirty = true
+	}
+}
+func (sv *SyncByteCoord) Get() (int8, int8) {
+	return sv.x, sv.y
+}
+func (sv *SyncByteCoord) IsDirty() bool {
+	return sv.dirty
+}
+func (sv *SyncByteCoord) MakeDirty() {
+	sv.dirty = true
+}
+func (sv *SyncByteCoord) GetData() []byte {
+	sv.dirty = false
+	return []byte{byte(int(sv.x)+128), byte(int(sv.y)+128)}
+}
+func (sv *SyncByteCoord) SetData(data []byte) {
+	sv.dirty = false
+	sv.x = int8(int(data[0])-128)
+	sv.y = int8(int(data[1])-128)
+}
+func (sv *SyncByteCoord) Type() byte {
+	return BYTECOORDSYNCED
+}
+func CreateSyncByteCoord(x,y int8) *SyncByteCoord {
+	return &SyncByteCoord{x,y, true}
 }
 
 // +-+-+-+-+-+-+-+-+-+-+-+
@@ -189,6 +247,9 @@ func (sv *SyncFloat64) GetFloat() float64 {
 }
 func (sv *SyncFloat64) IsDirty() bool {
 	return sv.dirty
+}
+func (sv *SyncFloat64) MakeDirty() {
+	sv.dirty = true
 }
 func (sv *SyncFloat64) GetData() []byte {
 	sv.dirty = false
@@ -215,6 +276,16 @@ type SyncString struct {
 	variable string
 	dirty    bool
 }
+func (sv *SyncString) Clear() {
+	sv.variable = ""
+}
+func (sv *SyncString) SetBs(bs []byte) {
+	sv.variable = string(bs)
+	sv.dirty = true
+}
+func (sv *SyncString) GetBs() []byte {
+	return []byte(sv.variable)
+}
 func (sv *SyncString) SetString(i string) {
 	sv.variable = i
 	sv.dirty = true
@@ -224,6 +295,9 @@ func (sv *SyncString) GetString() string {
 }
 func (sv *SyncString) IsDirty() bool {
 	return sv.dirty
+}
+func (sv *SyncString) MakeDirty() {
+	sv.dirty = true
 }
 func (sv *SyncString) GetData() []byte {
 	sv.dirty = false

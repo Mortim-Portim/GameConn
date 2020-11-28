@@ -11,6 +11,7 @@ func GetNewClientHandler(s *Server, cn *ws.Conn) (ch *ClientHandler) {
 	ch.SyncvarsByID = 	make(map[int]SyncVar)
 	ch.SyncvarsByACID = make(map[int]SyncVar)
 	ch.ACIDToID	=		make(map[int]int)
+	ch.SyncVarOnChange = make(map[int]func(SyncVar))
 	return
 }
 type ClientHandler struct {
@@ -19,6 +20,7 @@ type ClientHandler struct {
 	SyncvarsByID	map[int]SyncVar
 	SyncvarsByACID	map[int]SyncVar
 	ACIDToID		map[int]int
+	SyncVarOnChange map[int]func(SyncVar)
 	idCounter int
 }
 func (ch *ClientHandler) RegisterSyncVar(sv SyncVar, ACID int) {
@@ -30,10 +32,17 @@ func (ch *ClientHandler) RegisterSyncVar(sv SyncVar, ACID int) {
 	ch.Server.Send(resp, ch.Server.ConnToIdx[ch.Conn])
 	ch.idCounter ++
 }
-func (ch *ClientHandler) UpdateSyncVars() {
+func (ch *ClientHandler) RegisterOnChangeFunc(ACID int, fnc func(SyncVar)) {
+	id, ok := ch.ACIDToID[ACID]
+	if ok {
+		ch.SyncVarOnChange[id] = fnc
+	}
+}
+func (ch *ClientHandler) UpdateSyncVars() (uc int) {
 	var_data := []byte{SYNCVAR_UPDATE}
 	for id,sv := range(ch.SyncvarsByID) {
 		if sv.IsDirty() {
+			uc ++
 			syncDat := sv.GetData()
 			data := append(cmp.Int16ToBytes(int16(len(syncDat))), syncDat...)
 			payload := append(cmp.Int16ToBytes(int16(id)), data...)
@@ -44,6 +53,7 @@ func (ch *ClientHandler) UpdateSyncVars() {
 	if len(var_data) > 1 {
 		ch.Server.Send(var_data, ch.Server.ConnToIdx[ch.Conn])
 	}
+	return 
 }
 func (ch *ClientHandler) DeleteSyncVar(ACID int) {
 	id := ch.ACIDToID[ACID]
@@ -62,11 +72,14 @@ func (ch *ClientHandler) deleteSyncVarRemote(ACID int, id int) {
 }
 func (ch *ClientHandler) onSyncVarUpdateC(data []byte) {
 	for true {
-		id := cmp.BytesToInt16(data[:2])
+		id := int(cmp.BytesToInt16(data[:2]))
 		l := cmp.BytesToInt16(data[2:4])
 		dat := data[4:4+l]
 		data = data[4+l:]
-		ch.SyncvarsByID[int(id)].SetData(dat)
+		ch.SyncvarsByID[id].SetData(dat)
+		if fnc, ok := ch.SyncVarOnChange[id]; ok {
+			fnc(ch.SyncvarsByID[id])
+		}
 		if len(data) <= 0 {
 			break
 		}
@@ -102,9 +115,29 @@ type ServerManager struct {
 	OnNewConn    func(c *ws.Conn, mt int, msg []byte, err error, s *Server)
 	OnCloseConn  func(c *ws.Conn, mt int, msg []byte, err error, s *Server)
 }
-func (m *ServerManager) RegisterSyncVar(sv SyncVar, ACID int, clients ...*ws.Conn) {
-	for _,c := range(clients) {
+func (m *ServerManager) RegisterSyncVar(svs []SyncVar, ACID int, clients ...*ws.Conn) {
+	var sv SyncVar
+	for i,c := range(clients) {
+		if i < len(svs) {
+			sv = svs[i]
+		}else{
+			v := GetSyncVarOfType(sv.Type())
+			v.SetData(sv.GetData())
+			sv.MakeDirty()
+			sv = v
+		}
+		sv.MakeDirty()
 		m.Handler[c].RegisterSyncVar(sv, ACID)
+		m.Server.WaitForConfirmation(m.Server.ConnToIdx[c])
+	}
+}
+func (m *ServerManager) RegisterOnChangeFunc(ACID int, fncs []func(SyncVar), clients ...*ws.Conn) {
+	fnc := fncs[0]
+	for i,c := range(clients) {
+		if i > 0 && i < len(fncs) {
+			fnc = fncs[i]
+		}
+		m.Handler[c].RegisterOnChangeFunc(ACID, fnc)
 	}
 }
 func (m *ServerManager) UpdateSyncVars() {

@@ -27,6 +27,7 @@ const (
 	INT16SYNCED = 		byte(3)
 	BOOLSYNCED = 		byte(4)
 	BYTESYNCED = 		byte(5)
+	BYTECOORDSYNCED = 	byte(6)
 )
 
 func DeleteInt(fast bool, i int, src ...int) (dst []int) {

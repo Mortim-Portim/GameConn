@@ -32,6 +32,9 @@ type Point struct {
 func (p *Point) IsDirty() bool {
 	return p.isdirty
 }
+func (p *Point) MakeDirty() {
+	p.isdirty = true
+}
 //Encodes the data of pnt
 func (p *Point) GetData() []byte {
 	p.isdirty = false
@@ -90,13 +93,13 @@ func main() {
 	syncVar3 := GC.CreateSyncString("fünf und dreißig")
 	
 	//Registers a syncvar and waits for the managers to finish communication
-	servermanager.RegisterSyncVar(syncVar1, 1, servermanager.AllClients...)
+	servermanager.RegisterSyncVar([]GC.SyncVar{syncVar1}, 1, servermanager.AllClients...)
 	server.WaitForAllConfirmations()
 	//Registers a syncvar and waits for the managers to finish communication
-	servermanager.RegisterSyncVar(syncVar2, 2, servermanager.AllClients...)
+	servermanager.RegisterSyncVar([]GC.SyncVar{syncVar2}, 2, servermanager.AllClients...)
 	server.WaitForAllConfirmations()
 	//Registers a syncvar and waits for the managers to finish communication
-	servermanager.RegisterSyncVar(syncVar3, 3, servermanager.AllClients...)
+	servermanager.RegisterSyncVar([]GC.SyncVar{syncVar3}, 3, servermanager.AllClients...)
 	server.WaitForAllConfirmations()
 	
 	//Updates all syncvars that changed on the server side and waits for the managers to finish communication

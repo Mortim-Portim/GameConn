@@ -28,6 +28,7 @@ func GetClientManager(c *Client) (cm *ClientManager) {
 	cm.SyncvarsByID = 	make(map[int]SyncVar)
 	cm.SyncvarsByACID = make(map[int]SyncVar)
 	cm.ACIDToID	=		make(map[int]int)
+	cm.SyncVarOnChange = make(map[int]func(SyncVar))
 	c.InputHandler = 	cm.receive
 	return
 }
@@ -36,6 +37,7 @@ type ClientManager struct {
 	SyncvarsByID	map[int]SyncVar
 	SyncvarsByACID	map[int]SyncVar
 	ACIDToID		map[int]int
+	SyncVarOnChange map[int]func(SyncVar)
 	
 	InputHandler  func(mt int, msg []byte, err error, c *Client) (alive bool)
 }
@@ -49,6 +51,12 @@ func (m *ClientManager) RegisterSyncVar(sv SyncVar, ACID int) {
 	printLogF(".....Client: Requesting SyncVar with ACID='%v', type=%v , initiated by self=%s", ACID, sv.Type(), m.Client.LocalAddr().String())
 	m.SyncvarsByACID[ACID] = sv
 	m.Client.Send(append([]byte{SYNCVAR_REGISTRY, sv.Type()}, cmp.Int16ToBytes(int16(ACID))...))
+}
+func (m *ClientManager) RegisterOnChangeFunc(ACID int, fnc func(SyncVar)) {
+	id, ok := m.ACIDToID[ACID]
+	if ok {
+		m.SyncVarOnChange[id] = fnc
+	}
 }
 func (m *ClientManager) UpdateSyncVars() {
 	var_data := []byte{SYNCVAR_UPDATE}
@@ -122,6 +130,9 @@ func (m *ClientManager) onSyncVarUpdateC(data []byte) {
 		printLogF(".....Client: Updating SyncVar with ID=%v: len(dat)=%v, initiated by server=%s", id, l, m.Client.RemoteAddr().String())
 		data = data[4+l:]
 		m.SyncvarsByID[id].SetData(dat)
+		if fnc, ok := m.SyncVarOnChange[id]; ok {
+			fnc(m.SyncvarsByID[id])
+		}
 		if len(data) <= 0 {
 			break
 		}
