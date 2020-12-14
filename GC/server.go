@@ -39,6 +39,9 @@ func GetNewServer() (s *Server) {
 	return
 }
 func (s *Server) Send(bs []byte, ci int) error {
+	for s.Data[ci] != nil {
+		
+	}
 	time.Sleep(ARTIFICIAL_SERVER_PING)
 	if _, ok := s.Confirms[ci]; !ok {
 		s.Confirms[ci] = make(chan bool)

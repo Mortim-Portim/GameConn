@@ -11,7 +11,7 @@ func GetNewClientHandler(s *Server, cn *ws.Conn) (ch *ClientHandler) {
 	ch.SyncvarsByID = 	make(map[int]SyncVar)
 	ch.SyncvarsByACID = make(map[int]SyncVar)
 	ch.ACIDToID	=		make(map[int]int)
-	ch.SyncVarOnChange = make(map[int]func(SyncVar))
+	ch.SyncVarOnChange = make(map[int]func(SyncVar, int))
 	return
 }
 type ClientHandler struct {
@@ -20,7 +20,7 @@ type ClientHandler struct {
 	SyncvarsByID	map[int]SyncVar
 	SyncvarsByACID	map[int]SyncVar
 	ACIDToID		map[int]int
-	SyncVarOnChange map[int]func(SyncVar)
+	SyncVarOnChange map[int]func(SyncVar, int)
 	idCounter int
 }
 func (ch *ClientHandler) RegisterSyncVar(sv SyncVar, ACID int) {
@@ -32,7 +32,22 @@ func (ch *ClientHandler) RegisterSyncVar(sv SyncVar, ACID int) {
 	ch.Server.Send(resp, ch.Server.ConnToIdx[ch.Conn])
 	ch.idCounter ++
 }
-func (ch *ClientHandler) RegisterOnChangeFunc(ACID int, fnc func(SyncVar)) {
+func (ch *ClientHandler) RegisterSyncVars(svs []SyncVar, ACIDs ...int) {
+	data := []byte{SYNCVAR_M_REGISTRY}
+	for i,sv := range(svs) {
+		ACID := ACIDs[i]
+		printLogF("#####Server: MCreating SyncVar with ID=%v, ACID='%v', type=%v , initiated by self=%s", ch.idCounter, ACID, sv.Type(), ch.Conn.LocalAddr().String())
+		ch.SyncvarsByACID[ACID] 		= sv
+		ch.SyncvarsByID[ch.idCounter] 	= sv
+		ch.ACIDToID[ACID] 				= ch.idCounter
+		data = append(data, sv.Type())
+		data = append(data, cmp.Int16ToBytes(int16(ACID))...)
+		data = append(data, cmp.Int16ToBytes(int16(ch.idCounter))...)
+		ch.idCounter ++
+	}
+	ch.Server.Send(data, ch.Server.ConnToIdx[ch.Conn])
+}
+func (ch *ClientHandler) RegisterOnChangeFunc(ACID int, fnc func(SyncVar, int)) {
 	id, ok := ch.ACIDToID[ACID]
 	if ok {
 		ch.SyncVarOnChange[id] = fnc
@@ -78,7 +93,7 @@ func (ch *ClientHandler) onSyncVarUpdateC(data []byte) {
 		data = data[4+l:]
 		ch.SyncvarsByID[id].SetData(dat)
 		if fnc, ok := ch.SyncVarOnChange[id]; ok {
-			fnc(ch.SyncvarsByID[id])
+			defer fnc(ch.SyncvarsByID[id], id)
 		}
 		if len(data) <= 0 {
 			break
@@ -104,16 +119,21 @@ func GetServerManager(s *Server) (sm *ServerManager) {
 	s.InputHandler = 	sm.receive
 	s.OnNewConn = 		sm.onNewConn
 	s.OnCloseConn = 	sm.onCloseConn
+	sm.StandardOnChange = nil
 	return
 }
 type ServerManager struct {
 	Server   *Server
 	Handler map[*ws.Conn]*ClientHandler
 	AllClients []*ws.Conn
+	StandardOnChange func(SyncVar, int)
 	
 	InputHandler func(c *ws.Conn, mt int, msg []byte, err error, s *Server)
 	OnNewConn    func(c *ws.Conn, mt int, msg []byte, err error, s *Server)
 	OnCloseConn  func(c *ws.Conn, mt int, msg []byte, err error, s *Server)
+}
+func (m *ServerManager) RegisterSyncVarToAllClients(sv SyncVar, ACID int) {
+	m.RegisterSyncVar([]SyncVar{sv}, ACID, m.AllClients...)
 }
 func (m *ServerManager) RegisterSyncVar(svs []SyncVar, ACID int, clients ...*ws.Conn) {
 	var sv SyncVar
@@ -129,9 +149,12 @@ func (m *ServerManager) RegisterSyncVar(svs []SyncVar, ACID int, clients ...*ws.
 		sv.MakeDirty()
 		m.Handler[c].RegisterSyncVar(sv, ACID)
 		m.Server.WaitForConfirmation(m.Server.ConnToIdx[c])
+		if m.StandardOnChange != nil {
+			m.Handler[c].RegisterOnChangeFunc(ACID, m.StandardOnChange)
+		}
 	}
 }
-func (m *ServerManager) RegisterOnChangeFunc(ACID int, fncs []func(SyncVar), clients ...*ws.Conn) {
+func (m *ServerManager) RegisterOnChangeFunc(ACID int, fncs []func(SyncVar, int), clients ...*ws.Conn) {
 	fnc := fncs[0]
 	for i,c := range(clients) {
 		if i > 0 && i < len(fncs) {

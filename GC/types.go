@@ -10,14 +10,16 @@ const (
 	
 	SYNCVAR_REGISTRY = 				byte(2)
 	SYNCVAR_REGISTRY_CONFIRMATION =	byte(3)
-	SYNCVAR_UPDATE = 				byte(4)
-	SYNCVAR_DELETION =				byte(5)
+	SYNCVAR_M_REGISTRY = 			byte(4)
+	SYNCVAR_M_REGISTRY_CONFIRMATION=byte(5)
+	SYNCVAR_UPDATE = 				byte(6)
+	SYNCVAR_DELETION =				byte(7)
 	
-	CONFIRMATION =					byte(6)
+	CONFIRMATION =					byte(8)
 	
-	BINARYMSG = 					byte(7)
+	BINARYMSG = 					byte(9)
 	
-	MESSAGE_TYPES = 				byte(8)
+	MESSAGE_TYPES = 				byte(10)
 )
 
 const (
@@ -28,6 +30,9 @@ const (
 	BOOLSYNCED = 		byte(4)
 	BYTESYNCED = 		byte(5)
 	BYTECOORDSYNCED = 	byte(6)
+	UINT16SYNCED = 		byte(7)
+	
+	SYNCVAR_TYPES = 	byte(8)
 )
 
 func DeleteInt(fast bool, i int, src ...int) (dst []int) {

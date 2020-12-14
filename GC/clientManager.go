@@ -12,8 +12,17 @@ Client registers SyncVar -> 		Payload:
 -> Server sends Confirmation -> 	Payload:
 [SYNCVAR_REGISTRY_CONFIRMATION 	| (2){AccessID}] 		| (2){id}]																len() = 5
 
+Client registers multiple SyncVars->Payload:
+[SYNCVAR_M_REGISTRY 			| (3){SyncVar.Type() 	| (2){AccessID}}]														len() = 1+3*n
+
+-> Server sends Confirmations ->    Payload:
+[SYNCVAR_M_REGISTRY_CONFIRMATION| (4){(2){AccessID}] 	| (2){id}}]																len() = 1+4*n
+
 Server registers SyncVar -> 		Payload:
 [SYNCVAR_REGISTRY 				| SyncVar.Type() 		| (2){AccessID}				| (2){id}]									len() = 6
+
+Server registers multiple SyncVars->Payload:
+[SYNCVAR_M_REGISTRY 			| (5){SyncVar.Type() 	| (2){AccessID}				| (2){id}}]									len() = 1+5*n
 
 SyncVars Update by Client/Server -> Payload:
 [SYNCVAR_UPDATE					| (n1){ (2)(id)			| (2)(SyncVar Length) 		| (n2)(SyncVar Data) }]						len() = 1+n1*(4+n2)
@@ -41,16 +50,31 @@ type ClientManager struct {
 	
 	InputHandler  func(mt int, msg []byte, err error, c *Client) (alive bool)
 }
-func (m *ClientManager) RegisterSyncVar(sv SyncVar, ACID int) {
+func (m *ClientManager) CheckMap() {
 	if m.SyncvarsByID == nil {
 		m.SyncvarsByID = make(map[int]SyncVar)
 	}
 	if m.SyncvarsByACID == nil {
 		m.SyncvarsByACID = make(map[int]SyncVar)
 	}
+}
+func (m *ClientManager) RegisterSyncVar(sv SyncVar, ACID int) {
+	m.CheckMap()
 	printLogF(".....Client: Requesting SyncVar with ACID='%v', type=%v , initiated by self=%s", ACID, sv.Type(), m.Client.LocalAddr().String())
 	m.SyncvarsByACID[ACID] = sv
 	m.Client.Send(append([]byte{SYNCVAR_REGISTRY, sv.Type()}, cmp.Int16ToBytes(int16(ACID))...))
+}
+func (m *ClientManager) RegisterSyncVars(svs []SyncVar, ACIDs ...int) {
+	m.CheckMap()
+	data := []byte{SYNCVAR_M_REGISTRY}
+	for i,sv := range(svs) {
+		ACID := ACIDs[i]
+		printLogF(".....Client: MRequesting SyncVar with ACID='%v', type=%v , initiated by self=%s", ACID, sv.Type(), m.Client.LocalAddr().String())
+		m.SyncvarsByACID[ACID] = sv
+		data = append(data, sv.Type())
+		data = append(data, cmp.Int16ToBytes(int16(ACID))...)
+	}
+	m.Client.Send(data)
 }
 func (m *ClientManager) RegisterOnChangeFunc(ACID int, fnc func(SyncVar)) {
 	id, ok := m.ACIDToID[ACID]
@@ -94,6 +118,8 @@ func (m *ClientManager) receive(mt int, input []byte, err error, c *Client) bool
 	}
 	if input[0] == SYNCVAR_REGISTRY_CONFIRMATION {
 		m.processRegisterVarConfirm(input[1:])
+	}else if input[0] == SYNCVAR_M_REGISTRY_CONFIRMATION {
+		m.processRegisterVarsConfirm(input[1:])
 	}else if input[0] == SYNCVAR_REGISTRY {
 		t := input[1]
 		ACID := int(cmp.BytesToInt16(input[2:4]))
@@ -102,6 +128,17 @@ func (m *ClientManager) receive(mt int, input []byte, err error, c *Client) bool
 		m.SyncvarsByACID[ACID] = GetSyncVarOfType(t)
 		m.SyncvarsByID[id] = m.SyncvarsByACID[ACID]
 		m.ACIDToID[ACID] = id
+	}else if input[0] == SYNCVAR_M_REGISTRY {
+		input = input[1:]
+		for i := 0; i < len(input); i += 5 {
+			t := input[i]
+			ACID := int(cmp.BytesToInt16(input[i+1:i+3]))
+			id := int(cmp.BytesToInt16(input[i+3:i+5]))
+			printLogF(".....Client: MCreating SyncVar with ID=%v, ACID='%v' , initiated by server=%s", id, ACID, m.Client.RemoteAddr().String())
+			m.SyncvarsByACID[ACID] = GetSyncVarOfType(t)
+			m.SyncvarsByID[id] = m.SyncvarsByACID[ACID]
+			m.ACIDToID[ACID] = id
+		}
 	}else if input[0] == SYNCVAR_UPDATE {
 		m.onSyncVarUpdateC(input[1:])
 	}else if input[0] == SYNCVAR_DELETION {
@@ -121,6 +158,15 @@ func (m *ClientManager) processRegisterVarConfirm(data []byte) {
 	m.SyncvarsByID[id] = m.SyncvarsByACID[ACID]
 	m.ACIDToID[ACID] = id
 	printLogF(".....Client: Creating SyncVar with ID=%v, ACID='%v' , confirmed by server=%s", id, ACID, m.Client.RemoteAddr().String())
+}
+func (m *ClientManager) processRegisterVarsConfirm(data []byte) {
+	for i := 0; i < len(data); i += 4 {
+		ACID := int(cmp.BytesToInt16(data[i:i+2]))
+		id := int(cmp.BytesToInt16(data[i+2:i+4]))
+		m.SyncvarsByID[id] = m.SyncvarsByACID[ACID]
+		m.ACIDToID[ACID] = id
+		printLogF(".....Client: MCreating SyncVar with ID=%v, ACID='%v' , confirmed by server=%s", id, ACID, m.Client.RemoteAddr().String())
+	}
 }
 func (m *ClientManager) onSyncVarUpdateC(data []byte) {
 	for true {

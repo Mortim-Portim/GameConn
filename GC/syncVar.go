@@ -38,6 +38,7 @@ func InitSyncVarStandardTypes() {
 	RegisteredSyncVarTypes[BOOLSYNCED] = func()(SyncVar){return CreateSyncBool(false)}
 	RegisteredSyncVarTypes[BYTESYNCED] = func()(SyncVar){return CreateSyncByte(0)}
 	RegisteredSyncVarTypes[BYTECOORDSYNCED] = func()(SyncVar){return CreateSyncByteCoord(0,0)}
+	RegisteredSyncVarTypes[UINT16SYNCED] = func()(SyncVar){return CreateSyncUInt16(0)}
 }
 
 func GetSyncVarOfType(t byte) SyncVar {
@@ -52,8 +53,10 @@ type SyncInt64 struct {
 	dirty    bool
 }
 func (sv *SyncInt64) SetInt(i int64) {
-	sv.variable = i
-	sv.dirty = true
+	if i != sv.variable {
+		sv.variable = i
+		sv.dirty = true
+	}
 }
 func (sv *SyncInt64) GetInt() int64 {
 	return sv.variable
@@ -90,8 +93,10 @@ type SyncInt16 struct {
 	dirty    bool
 }
 func (sv *SyncInt16) SetInt(i int16) {
-	sv.variable = i
-	sv.dirty = true
+	if i != sv.variable {
+		sv.variable = i
+		sv.dirty = true
+	}
 }
 func (sv *SyncInt16) GetInt() int16 {
 	return sv.variable
@@ -111,12 +116,47 @@ func (sv *SyncInt16) SetData(variable []byte) {
 	sv.variable = cmp.BytesToInt16(variable)
 }
 func (sv *SyncInt16) Type() byte {
-	return INT16SYNCED
+	return UINT16SYNCED
 }
 func CreateSyncInt16(variable int16) *SyncInt16 {
 	return &SyncInt16{variable, true}
 }
-
+// +-+-+-+-+-+-+-+-+-+-+
+// |S|y|n|c|U|I|n|t|1|6|
+// +-+-+-+-+-+-+-+-+-+-+
+type SyncUInt16 struct {
+	variable uint16
+	dirty    bool
+}
+func (sv *SyncUInt16) SetInt(i uint16) {
+	if i != sv.variable {
+		sv.variable = i
+		sv.dirty = true
+	}
+}
+func (sv *SyncUInt16) GetInt() uint16 {
+	return sv.variable
+}
+func (sv *SyncUInt16) IsDirty() bool {
+	return sv.dirty
+}
+func (sv *SyncUInt16) MakeDirty() {
+	sv.dirty = true
+}
+func (sv *SyncUInt16) GetData() []byte {
+	sv.dirty = false
+	return cmp.UInt16ToBytes(sv.variable)
+}
+func (sv *SyncUInt16) SetData(variable []byte) {
+	sv.dirty = false
+	sv.variable = cmp.BytesToUInt16(variable)
+}
+func (sv *SyncUInt16) Type() byte {
+	return INT16SYNCED
+}
+func CreateSyncUInt16(variable uint16) *SyncUInt16 {
+	return &SyncUInt16{variable, true}
+}
 // +-+-+-+-+-+-+-+-+
 // |S|y|n|c|B|o|o|l|
 // +-+-+-+-+-+-+-+-+
@@ -125,8 +165,10 @@ type SyncBool struct {
 	dirty    bool
 }
 func (sv *SyncBool) SetBool(i bool) {
-	sv.variable = i
-	sv.dirty = true
+	if i != sv.variable {
+		sv.variable = i
+		sv.dirty = true
+	}
 }
 func (sv *SyncBool) GetBool() bool {
 	return sv.variable
@@ -160,8 +202,10 @@ type SyncByte struct {
 	dirty    bool
 }
 func (sv *SyncByte) SetByte(i byte) {
-	sv.variable = i
-	sv.dirty = true
+	if i != sv.variable {
+		sv.variable = i
+		sv.dirty = true
+	}
 }
 func (sv *SyncByte) GetByte() byte {
 	return sv.variable
@@ -239,8 +283,10 @@ type SyncFloat64 struct {
 	dirty    bool
 }
 func (sv *SyncFloat64) SetFloat(i float64) {
-	sv.variable = i
-	sv.dirty = true
+	if i != sv.variable {
+		sv.variable = i
+		sv.dirty = true
+	}
 }
 func (sv *SyncFloat64) GetFloat() float64 {
 	return sv.variable
@@ -277,18 +323,25 @@ type SyncString struct {
 	dirty    bool
 }
 func (sv *SyncString) Clear() {
-	sv.variable = ""
+	if len(sv.variable) > 0 {
+		sv.variable = ""
+	}
 }
 func (sv *SyncString) SetBs(bs []byte) {
-	sv.variable = string(bs)
-	sv.dirty = true
+	s := string(bs)
+	if sv.variable != s {
+		sv.variable = s
+		sv.dirty = true
+	}
 }
 func (sv *SyncString) GetBs() []byte {
 	return []byte(sv.variable)
 }
 func (sv *SyncString) SetString(i string) {
-	sv.variable = i
-	sv.dirty = true
+	if sv.variable != i {
+		sv.variable = i
+		sv.dirty = true
+	}
 }
 func (sv *SyncString) GetString() string {
 	return sv.variable
