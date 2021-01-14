@@ -37,7 +37,7 @@ func GetClientManager(c *Client) (cm *ClientManager) {
 	cm.SyncvarsByID = 	make(map[int]SyncVar)
 	cm.SyncvarsByACID = make(map[int]SyncVar)
 	cm.ACIDToID	=		make(map[int]int)
-	cm.SyncVarOnChange = make(map[int]func(SyncVar))
+	cm.SyncVarOnChange = make(map[int]func(SyncVar, int))
 	c.InputHandler = 	cm.receive
 	return
 }
@@ -46,7 +46,7 @@ type ClientManager struct {
 	SyncvarsByID	map[int]SyncVar
 	SyncvarsByACID	map[int]SyncVar
 	ACIDToID		map[int]int
-	SyncVarOnChange map[int]func(SyncVar)
+	SyncVarOnChange map[int]func(SyncVar, int)
 	
 	InputHandler  func(mt int, msg []byte, err error, c *Client) (alive bool)
 }
@@ -61,6 +61,7 @@ func (m *ClientManager) CheckMap() {
 func (m *ClientManager) RegisterSyncVar(sv SyncVar, ACID int) {
 	m.CheckMap()
 	printLogF(".....Client: Requesting SyncVar with ACID='%v', type=%v , initiated by self=%s", ACID, sv.Type(), m.Client.LocalAddr().String())
+	sv.IsRegisteredTo(1)
 	m.SyncvarsByACID[ACID] = sv
 	m.Client.Send(append([]byte{SYNCVAR_REGISTRY, sv.Type()}, cmp.Int16ToBytes(int16(ACID))...))
 }
@@ -70,22 +71,24 @@ func (m *ClientManager) RegisterSyncVars(svs []SyncVar, ACIDs ...int) {
 	for i,sv := range(svs) {
 		ACID := ACIDs[i]
 		printLogF(".....Client: MRequesting SyncVar with ACID='%v', type=%v , initiated by self=%s", ACID, sv.Type(), m.Client.LocalAddr().String())
+		sv.IsRegisteredTo(1)
 		m.SyncvarsByACID[ACID] = sv
 		data = append(data, sv.Type())
 		data = append(data, cmp.Int16ToBytes(int16(ACID))...)
 	}
 	m.Client.Send(data)
 }
-func (m *ClientManager) RegisterOnChangeFunc(ACID int, fnc func(SyncVar)) {
+func (m *ClientManager) RegisterOnChangeFunc(ACID int, fnc func(SyncVar, int)) {
 	id, ok := m.ACIDToID[ACID]
 	if ok {
 		m.SyncVarOnChange[id] = fnc
 	}
 }
-func (m *ClientManager) UpdateSyncVars() {
+func (m *ClientManager) UpdateSyncVars() (uc int) {
 	var_data := []byte{SYNCVAR_UPDATE}
 	for id,sv := range(m.SyncvarsByID) {
 		if sv.IsDirty() {
+			uc ++
 			syncDat := sv.GetData()
 			printLogF(".....Client: Updating SyncVar with ID=%v: len(dat)=%v, initiated by self=%s", id, len(syncDat), m.Client.LocalAddr().String())
 			data := append(cmp.Int16ToBytes(int16(len(syncDat))), syncDat...)
@@ -96,6 +99,7 @@ func (m *ClientManager) UpdateSyncVars() {
 	if len(var_data) > 1 {
 		m.Client.Send(var_data)
 	}
+	return
 }
 func (m *ClientManager) DeleteSyncVar(ACID int) {
 	id := m.ACIDToID[ACID]
@@ -177,7 +181,7 @@ func (m *ClientManager) onSyncVarUpdateC(data []byte) {
 		data = data[4+l:]
 		m.SyncvarsByID[id].SetData(dat)
 		if fnc, ok := m.SyncVarOnChange[id]; ok {
-			fnc(m.SyncvarsByID[id])
+			fnc(m.SyncvarsByID[id], id)
 		}
 		if len(data) <= 0 {
 			break

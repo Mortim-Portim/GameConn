@@ -5,6 +5,14 @@ import (
 	cmp "github.com/mortim-portim/GraphEng/Compression"
 )
 
+type Handler interface {
+	RegisterSyncVar(sv SyncVar, ACID int)
+	RegisterSyncVars(svs []SyncVar, ACIDs ...int)
+	RegisterOnChangeFunc(ACID int, fnc func(SyncVar, int))
+	UpdateSyncVars() int
+	DeleteSyncVar(ACID int)
+}
+
 func GetNewClientHandler(s *Server, cn *ws.Conn) (ch *ClientHandler) {
 	ch = &ClientHandler{Server:s, Conn:cn}
 	ch.idCounter = 0
@@ -133,20 +141,28 @@ type ServerManager struct {
 	OnCloseConn  func(c *ws.Conn, mt int, msg []byte, err error, s *Server)
 }
 func (m *ServerManager) RegisterSyncVarToAllClients(sv SyncVar, ACID int) {
-	m.RegisterSyncVar([]SyncVar{sv}, ACID, m.AllClients...)
+	m.RegisterSyncVar(sv, ACID, m.AllClients...)
 }
-func (m *ServerManager) RegisterSyncVar(svs []SyncVar, ACID int, clients ...*ws.Conn) {
-	var sv SyncVar
-	for i,c := range(clients) {
-		if i < len(svs) {
-			sv = svs[i]
-		}else{
-			v := GetSyncVarOfType(sv.Type())
-			v.SetData(sv.GetData())
-			sv.MakeDirty()
-			sv = v
+func (m *ServerManager) RegisterSyncVarsToAllClients(svs []SyncVar, ACIDs []int) {
+	m.RegisterSyncVars(svs, ACIDs, m.AllClients...)
+}
+func (m *ServerManager) RegisterSyncVars(svs []SyncVar, ACIDs []int, clients ...*ws.Conn) {
+	for _,sv := range(svs) {
+		sv.IsRegisteredTo(len(clients))
+	}
+	for _,c := range(clients) {
+		m.Handler[c].RegisterSyncVars(svs, ACIDs...)
+		m.Server.WaitForConfirmation(m.Server.ConnToIdx[c])
+		if m.StandardOnChange != nil {
+			for _,ACID := range(ACIDs) {
+				m.Handler[c].RegisterOnChangeFunc(ACID, m.StandardOnChange)
+			}
 		}
-		sv.MakeDirty()
+	}
+}
+func (m *ServerManager) RegisterSyncVar(sv SyncVar, ACID int, clients ...*ws.Conn) {
+	sv.IsRegisteredTo(len(clients))
+	for _,c := range(clients) {
 		m.Handler[c].RegisterSyncVar(sv, ACID)
 		m.Server.WaitForConfirmation(m.Server.ConnToIdx[c])
 		if m.StandardOnChange != nil {
@@ -160,6 +176,11 @@ func (m *ServerManager) RegisterOnChangeFunc(ACID int, fncs []func(SyncVar, int)
 		if i > 0 && i < len(fncs) {
 			fnc = fncs[i]
 		}
+		m.Handler[c].RegisterOnChangeFunc(ACID, fnc)
+	}
+}
+func (m *ServerManager) RegisterOnChangeFuncToAllClients(ACID int, fnc func(SyncVar, int)) {
+	for _,c := range(m.AllClients) {
 		m.Handler[c].RegisterOnChangeFunc(ACID, fnc)
 	}
 }

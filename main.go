@@ -26,6 +26,7 @@ type Pnt struct {
 	X float64
 }
 type Point struct {
+	GC.BasicSyncVar
 	pnt *Pnt
 	isdirty bool
 }
@@ -37,7 +38,8 @@ func (p *Point) MakeDirty() {
 }
 //Encodes the data of pnt
 func (p *Point) GetData() []byte {
-	p.isdirty = false
+	p.UpdatedPP()
+	p.isdirty = p.AllUpdated()
 	defer codeBuffer.Reset()
 	err := PointEncoder.Encode(p.pnt)
 	if err != nil {panic(err)}
@@ -57,7 +59,7 @@ func (p *Point) Type() byte {
 	return byte(3)
 }
 func GetPoint() GC.SyncVar {
-	return &Point{pnt:&Pnt{}, isdirty:true}
+	return &Point{GC.GetBasicSyncVar(), &Pnt{}, true}
 }
 
 func main() {
@@ -88,18 +90,18 @@ func main() {
 	}
 	
 	//Creates three syncvars
-	syncVar1 := &Point{&Pnt{25.3}, true}
+	syncVar1 := &Point{GC.GetBasicSyncVar(), &Pnt{25.3}, true}
 	syncVar2 := GC.CreateSyncFloat64(35.35)
 	syncVar3 := GC.CreateSyncString("fünf und dreißig")
 	
 	//Registers a syncvar and waits for the managers to finish communication
-	servermanager.RegisterSyncVar([]GC.SyncVar{syncVar1}, 1, servermanager.AllClients...)
+	servermanager.RegisterSyncVar(syncVar1, 1, servermanager.AllClients...)
 	server.WaitForAllConfirmations()
 	//Registers a syncvar and waits for the managers to finish communication
-	servermanager.RegisterSyncVar([]GC.SyncVar{syncVar2}, 2, servermanager.AllClients...)
+	servermanager.RegisterSyncVar(syncVar2, 2, servermanager.AllClients...)
 	server.WaitForAllConfirmations()
 	//Registers a syncvar and waits for the managers to finish communication
-	servermanager.RegisterSyncVar([]GC.SyncVar{syncVar3}, 3, servermanager.AllClients...)
+	servermanager.RegisterSyncVar(syncVar3, 3, servermanager.AllClients...)
 	server.WaitForAllConfirmations()
 	
 	//Updates all syncvars that changed on the server side and waits for the managers to finish communication
