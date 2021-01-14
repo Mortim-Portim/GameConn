@@ -40,10 +40,9 @@ func (ch *ClientHandler) RegisterSyncVar(sv SyncVar, ACID int) {
 	ch.Server.Send(resp, ch.Server.ConnToIdx[ch.Conn])
 	ch.idCounter ++
 }
-func (ch *ClientHandler) RegisterSyncVars(svs []SyncVar, ACIDs ...int) {
+func (ch *ClientHandler) RegisterSyncVars(svs map[int]SyncVar) {
 	data := []byte{SYNCVAR_M_REGISTRY}
-	for i,sv := range(svs) {
-		ACID := ACIDs[i]
+	for ACID,sv := range(svs) {
 		printLogF("#####Server: MCreating SyncVar with ID=%v, ACID='%v', type=%v , initiated by self=%s", ch.idCounter, ACID, sv.Type(), ch.Conn.LocalAddr().String())
 		ch.SyncvarsByACID[ACID] 		= sv
 		ch.SyncvarsByID[ch.idCounter] 	= sv
@@ -143,18 +142,18 @@ type ServerManager struct {
 func (m *ServerManager) RegisterSyncVarToAllClients(sv SyncVar, ACID int) {
 	m.RegisterSyncVar(sv, ACID, m.AllClients...)
 }
-func (m *ServerManager) RegisterSyncVarsToAllClients(svs []SyncVar, ACIDs []int) {
-	m.RegisterSyncVars(svs, ACIDs, m.AllClients...)
+func (m *ServerManager) RegisterSyncVarsToAllClients(svs map[int]SyncVar) {
+	m.RegisterSyncVars(svs, m.AllClients...)
 }
-func (m *ServerManager) RegisterSyncVars(svs []SyncVar, ACIDs []int, clients ...*ws.Conn) {
+func (m *ServerManager) RegisterSyncVars(svs map[int]SyncVar, clients ...*ws.Conn) {
 	for _,sv := range(svs) {
 		sv.IsRegisteredTo(len(clients))
 	}
 	for _,c := range(clients) {
-		m.Handler[c].RegisterSyncVars(svs, ACIDs...)
+		m.Handler[c].RegisterSyncVars(svs)
 		m.Server.WaitForConfirmation(m.Server.ConnToIdx[c])
 		if m.StandardOnChange != nil {
-			for _,ACID := range(ACIDs) {
+			for ACID,_ := range(svs) {
 				m.Handler[c].RegisterOnChangeFunc(ACID, m.StandardOnChange)
 			}
 		}

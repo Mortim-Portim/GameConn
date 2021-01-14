@@ -142,7 +142,7 @@ func (sv *SyncInt16) SetData(variable []byte) {
 	sv.variable = cmp.BytesToInt16(variable)
 }
 func (sv *SyncInt16) Type() byte {
-	return UINT16SYNCED
+	return INT16SYNCED
 }
 func CreateSyncInt16(variable int16) *SyncInt16 {
 	return &SyncInt16{GetBasicSyncVar(), variable, true}
@@ -181,7 +181,7 @@ func (sv *SyncUInt16) SetData(variable []byte) {
 	sv.variable = cmp.BytesToUInt16(variable)
 }
 func (sv *SyncUInt16) Type() byte {
-	return INT16SYNCED
+	return UINT16SYNCED
 }
 func CreateSyncUInt16(variable uint16) *SyncUInt16 {
 	return &SyncUInt16{GetBasicSyncVar(), variable, true}
