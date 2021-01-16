@@ -10,13 +10,20 @@ import (
 	ws "github.com/gorilla/websocket"
 )
 
-const ARTIFICIAL_CLIENT_PING = 0//time.Millisecond*30
-const ARTIFICIAL_SERVER_PING = 0//time.Millisecond*30
+/**
+TODO is multiple useres connect at the same time
+
+**/
+
+const ARTIFICIAL_CLIENT_PING = time.Millisecond*30
+const ARTIFICIAL_SERVER_PING = time.Millisecond*30
 
 type Server struct {
 	ConnToIdx	map[*ws.Conn]int
 	topLevelLock map[int]*sync.Mutex
 	dataLock sync.Mutex
+	
+	confirmLocks map[int]*sync.Mutex
 	
 	Connections map[int]chan bool
 	Data        map[int]([]byte)
@@ -40,11 +47,12 @@ func GetNewServer() (s *Server) {
 	s.PendingConfirms = make(map[int]int)
 	s.connCounter = 0
 	s.topLevelLock = make(map[int]*sync.Mutex)
+	s.confirmLocks = make(map[int]*sync.Mutex)
 	return
 }
 func (s *Server) Send(bs []byte, ci int) {
 	s.topLevelLock[ci].Lock()
-	time.Sleep(ARTIFICIAL_SERVER_PING)
+	fmt.Println("Sending to connection ", ci)
 	if _, ok := s.Confirms[ci]; !ok {
 		s.Confirms[ci] = make(chan bool)
 	}
@@ -61,12 +69,16 @@ func (s *Server) Send(bs []byte, ci int) {
 	}
 }
 func (s *Server) WaitForConfirmation(ci int) {
+	s.confirmLocks[ci].Lock()
 	if ch, ok := s.Confirms[ci]; ok {
 		for s.PendingConfirms[ci] > 0 {
+			fmt.Printf("Waiting for %v confirmations on %v\n", s.PendingConfirms[ci], ci)
 			<-ch
 			s.PendingConfirms[ci] --
 		}
+		fmt.Printf("Waiting finished on %v\n", ci)
 	}
+	s.confirmLocks[ci].Unlock()
 }
 func (s *Server) WaitForConfirmations(ci ...int) {
 	for _,i := range(ci) {
@@ -112,13 +124,15 @@ func (s *Server) home(w http.ResponseWriter, r *http.Request) {
 	
 	c.SetPongHandler(func(appData string) error {
 		if _, ok := s.Confirms[s.ConnToIdx[c]]; ok {
+			fmt.Println("Confirming for ", s.ConnToIdx[c])
 			s.Confirms[s.ConnToIdx[c]] <- true
 		}
 		return nil
 	})
 	
 	idx := s.connCounter
-	var Locker, lowLevelLock sync.Mutex
+	var Locker, lowLevelLock, confirmL sync.Mutex
+	s.confirmLocks[idx] = &confirmL
 	s.topLevelLock[idx] = &Locker
 	s.Connections[idx] = make(chan bool)
 	s.ConnToIdx[c] = idx
@@ -126,6 +140,7 @@ func (s *Server) home(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		for {
 			<-s.Connections[idx]
+			time.Sleep(ARTIFICIAL_SERVER_PING)
 			lowLevelLock.Lock()
 			s.dataLock.Lock()
 			err = c.WriteMessage(ws.BinaryMessage, s.Data[idx])

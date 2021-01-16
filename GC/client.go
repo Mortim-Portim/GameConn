@@ -22,23 +22,24 @@ type Client struct {
 	confirmed	  chan bool
 	pendingConfirms int
 	
-	topLevelLock, lowLevelLock, readLock sync.Mutex
+	topLevelLock, lowLevelLock, readLock, confirmLock sync.Mutex
 }
 func (c *Client) GetPendingConfirms() int {
 	return c.pendingConfirms
 }
 func (c *Client) Send(bs []byte) {
 	c.topLevelLock.Lock()
-	time.Sleep(ARTIFICIAL_CLIENT_PING)
 	c.pendingConfirms ++
 	c.sendMessage = bs
 	close(c.waiting)
 }
 func (c *Client) WaitForConfirmation() {
+	c.confirmLock.Lock()
 	for c.pendingConfirms > 0 {
 		<-c.confirmed
 		c.pendingConfirms --
 	}
+	c.confirmLock.Unlock()
 	return
 }
 
@@ -117,6 +118,7 @@ func (c *Client) MakeConn(addr string) error {
 				return
 			case <-c.waiting:
 				if c.sendMessage != nil {
+					time.Sleep(ARTIFICIAL_CLIENT_PING)
 					c.lowLevelLock.Lock()
 					err := c.WriteMessage(ws.BinaryMessage, c.sendMessage)
 					if err != nil {
