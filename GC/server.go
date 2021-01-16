@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log"
 	"time"
-	"errors"
+	"sync"
 	"net/http"
 	ws "github.com/gorilla/websocket"
 )
@@ -15,6 +15,9 @@ const ARTIFICIAL_SERVER_PING = 0//time.Millisecond*30
 
 type Server struct {
 	ConnToIdx	map[*ws.Conn]int
+	topLevelLock map[int]*sync.Mutex
+	dataLock sync.Mutex
+	
 	Connections map[int]chan bool
 	Data        map[int]([]byte)
 	Confirms	map[int]chan bool
@@ -36,12 +39,11 @@ func GetNewServer() (s *Server) {
 	s.Confirms = 	make(map[int]chan bool)
 	s.PendingConfirms = make(map[int]int)
 	s.connCounter = 0
+	s.topLevelLock = make(map[int]*sync.Mutex)
 	return
 }
-func (s *Server) Send(bs []byte, ci int) error {
-	for s.Data[ci] != nil {
-		
-	}
+func (s *Server) Send(bs []byte, ci int) {
+	s.topLevelLock[ci].Lock()
 	time.Sleep(ARTIFICIAL_SERVER_PING)
 	if _, ok := s.Confirms[ci]; !ok {
 		s.Confirms[ci] = make(chan bool)
@@ -50,13 +52,13 @@ func (s *Server) Send(bs []byte, ci int) error {
 		s.PendingConfirms[ci] = 0
 	}
 	s.PendingConfirms[ci] ++
+	s.dataLock.Lock()
 	s.Data[ci] = bs
+	s.dataLock.Unlock()
 	ch, ok := s.Connections[ci]
-	if !ok {
-		return errors.New("Cannot send to unknown connection")
+	if ok {
+		ch <- true
 	}
-	ch <- true
-	return nil
 }
 func (s *Server) WaitForConfirmation(ci int) {
 	if ch, ok := s.Confirms[ci]; ok {
@@ -76,19 +78,15 @@ func (s *Server) WaitForAllConfirmations() {
 		s.WaitForConfirmation(i)
 	}
 }
-func (s *Server) SendToMultiple(bs []byte, ci ...int) error {
+func (s *Server) SendToMultiple(bs []byte, ci ...int) {
 	for _,i := range(ci) {
-		err := s.Send(bs, i)
-		if err != nil {return err}
+		s.Send(bs, i)
 	}
-	return nil
 }
-func (s *Server) SendAll(bs []byte) error {
+func (s *Server) SendAll(bs []byte) {
 	for i := 0; i < s.connCounter; i++ {
-		err := s.Send(bs, i)
-		if err != nil {return err}
+		s.Send(bs, i)
 	}
-	return nil
 }
 
 func (s *Server) RunOnPort(port string) string {
@@ -112,16 +110,6 @@ func (s *Server) home(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	
-//	c.SetPingHandler(func(appData string) error {
-//		log.Println("Server Ping")
-//		err := c.WriteControl(ws.PongMessage, []byte(appData), time.Now().Add(time.Second))
-//		if err == ws.ErrCloseSent {
-//			return nil
-//		} else if e, ok := err.(net.Error); ok && e.Temporary() {
-//			return nil
-//		}
-//		return err
-//	})
 	c.SetPongHandler(func(appData string) error {
 		if _, ok := s.Confirms[s.ConnToIdx[c]]; ok {
 			s.Confirms[s.ConnToIdx[c]] <- true
@@ -130,17 +118,26 @@ func (s *Server) home(w http.ResponseWriter, r *http.Request) {
 	})
 	
 	idx := s.connCounter
+	var Locker, lowLevelLock sync.Mutex
+	s.topLevelLock[idx] = &Locker
 	s.Connections[idx] = make(chan bool)
 	s.ConnToIdx[c] = idx
 	s.connCounter++
 	go func() {
 		for {
 			<-s.Connections[idx]
+			lowLevelLock.Lock()
+			s.dataLock.Lock()
 			err = c.WriteMessage(ws.BinaryMessage, s.Data[idx])
 			if err != nil {
 				break
 			}
+			s.dataLock.Unlock()
+			lowLevelLock.Unlock()
+			s.dataLock.Lock()
 			s.Data[idx] = nil
+			s.dataLock.Unlock()
+			s.topLevelLock[idx].Unlock()
 		}
 	}()
 
@@ -149,6 +146,7 @@ func (s *Server) home(w http.ResponseWriter, r *http.Request) {
 		mt, msg, err := c.ReadMessage()
 		if err != nil {
 			log.Printf("Error: %v, msg: %v, mt: %v\n", err, msg, mt)
+			s.closeConn(c)
 			if s.OnCloseConn != nil {
 				s.OnCloseConn(c, mt, msg, err, s)
 			}
@@ -159,6 +157,7 @@ func (s *Server) home(w http.ResponseWriter, r *http.Request) {
 				s.OnNewConn(c, mt, msg[1:], err, s)
 			}
 		} else if msg[0] == CLOSECONNECTION {
+			s.closeConn(c)
 			if s.OnCloseConn != nil {
 				s.OnCloseConn(c, mt, msg[1:], err, s)
 			}
@@ -167,11 +166,19 @@ func (s *Server) home(w http.ResponseWriter, r *http.Request) {
 			if s.InputHandler != nil {
 				s.InputHandler(c, mt, msg, err, s)
 			}
+			lowLevelLock.Lock()
 			err2 := c.WriteMessage(ws.PongMessage, []byte{})
 			if err2 != nil {
 				break
 			}
+			lowLevelLock.Unlock()
 		}
+	}
+}
+func (s *Server) closeConn(c *ws.Conn) {
+	s.PendingConfirms[s.ConnToIdx[c]] = 1
+	if _, ok := s.Confirms[s.ConnToIdx[c]]; ok {
+		close(s.Confirms[s.ConnToIdx[c]])
 	}
 }
 func GetLocalIP() string {

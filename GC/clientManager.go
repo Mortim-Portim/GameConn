@@ -2,6 +2,7 @@ package GC
 
 import (
 	cmp "github.com/mortim-portim/GraphEng/Compression"
+	//"sync"
 )
 
 /**
@@ -49,33 +50,25 @@ type ClientManager struct {
 	SyncVarOnChange map[int]func(SyncVar, int)
 	
 	InputHandler  func(mt int, msg []byte, err error, c *Client) (alive bool)
-}
-func (m *ClientManager) CheckMap() {
-	if m.SyncvarsByID == nil {
-		m.SyncvarsByID = make(map[int]SyncVar)
-	}
-	if m.SyncvarsByACID == nil {
-		m.SyncvarsByACID = make(map[int]SyncVar)
-	}
+	
+	//SV_ID, SV_ACID, ACID_ID, Chng sync.Mutex
 }
 func (m *ClientManager) RegisterSyncVar(sv SyncVar, ACID int) {
-	m.CheckMap()
 	printLogF(".....Client: Requesting SyncVar with ACID='%v', type=%v , initiated by self=%s", ACID, sv.Type(), m.Client.LocalAddr().String())
 	sv.IsRegisteredTo(1)
 	m.SyncvarsByACID[ACID] = sv
 	m.Client.Send(append([]byte{SYNCVAR_REGISTRY, sv.Type()}, cmp.Int16ToBytes(int16(ACID))...))
 }
-func (m *ClientManager) RegisterSyncVars(svs []SyncVar, ACIDs ...int) {
-	m.CheckMap()
+func (m *ClientManager) RegisterSyncVars(svs map[int]SyncVar) {
 	data := []byte{SYNCVAR_M_REGISTRY}
-	for i,sv := range(svs) {
-		ACID := ACIDs[i]
-		printLogF(".....Client: MRequesting SyncVar with ACID='%v', type=%v , initiated by self=%s", ACID, sv.Type(), m.Client.LocalAddr().String())
+	for ACID,sv := range(svs) {
+		//printLogF(".....Client: MRequesting SyncVar with ACID='%v', type=%v , initiated by self=%s", ACID, sv.Type(), m.Client.LocalAddr().String())
 		sv.IsRegisteredTo(1)
 		m.SyncvarsByACID[ACID] = sv
 		data = append(data, sv.Type())
 		data = append(data, cmp.Int16ToBytes(int16(ACID))...)
 	}
+	printLogF(".....Client: MRequesting %v SyncVars, initiated by self=%s", len(svs), m.Client.LocalAddr().String())
 	m.Client.Send(data)
 }
 func (m *ClientManager) RegisterOnChangeFunc(ACID int, fnc func(SyncVar, int)) {
@@ -84,17 +77,53 @@ func (m *ClientManager) RegisterOnChangeFunc(ACID int, fnc func(SyncVar, int)) {
 		m.SyncVarOnChange[id] = fnc
 	}
 }
+
+func (m *ClientManager) UpdateSyncVarsWithACIDs(ACIDs ...int) (uc int) {
+	lastACID := -1
+	var_data := []byte{SYNCVAR_UPDATE}
+	for ACID,sv := range(m.SyncvarsByACID) {
+		if sv.IsDirty() && containsI(ACIDs, ACID) {
+			uc ++
+			lastACID = ACID
+			
+			printLogF(".....Client: Updating SyncVar with ACID: %v of type %v: %v, initiated by self=%s", lastACID, sv.Type(), sv, m.Client.LocalAddr().String())
+			
+			syncDat := sv.GetData()
+			data := append(cmp.Int16ToBytes(int16(len(syncDat))), syncDat...)
+			payload := append(cmp.Int16ToBytes(int16(m.ACIDToID[ACID])), data...)
+			var_data = append(var_data, payload...)
+		}
+	}
+	if uc > 1 {
+		printLogF(".....Client: Updating %v SyncVars, initiated by self=%s", uc, m.Client.LocalAddr().String())
+	}else if uc == 1 {
+		//sv := m.SyncvarsByACID[lastACID]
+		//printLogF(".....Client: Updating SyncVar with ACID: %v of type %v: %v, initiated by self=%s", lastACID, sv.Type(), sv, m.Client.LocalAddr().String())
+	}
+	if len(var_data) > 1 {
+		m.Client.Send(var_data)
+	}
+	return
+}
 func (m *ClientManager) UpdateSyncVars() (uc int) {
+	lastID := -1
 	var_data := []byte{SYNCVAR_UPDATE}
 	for id,sv := range(m.SyncvarsByID) {
 		if sv.IsDirty() {
 			uc ++
+			lastID = id
 			syncDat := sv.GetData()
-			printLogF(".....Client: Updating SyncVar with ID=%v: len(dat)=%v, initiated by self=%s", id, len(syncDat), m.Client.LocalAddr().String())
+			//printLogF(".....Client: Updating SyncVar with ID=%v: len(dat)=%v, initiated by self=%s", id, len(syncDat), m.Client.LocalAddr().String())
 			data := append(cmp.Int16ToBytes(int16(len(syncDat))), syncDat...)
 			payload := append(cmp.Int16ToBytes(int16(id)), data...)
 			var_data = append(var_data, payload...)
 		}
+	}
+	if uc > 1 {
+		printLogF(".....Client: Updating %v SyncVars, initiated by self=%s", uc, m.Client.LocalAddr().String())
+	}else if uc == 1 {
+		sv := m.SyncvarsByID[lastID]
+		printLogF(".....Client: Updating SyncVar with ID: %v of type %v: %v, initiated by self=%s", lastID, sv.Type(), sv, m.Client.LocalAddr().String())
 	}
 	if len(var_data) > 1 {
 		m.Client.Send(var_data)
@@ -138,11 +167,12 @@ func (m *ClientManager) receive(mt int, input []byte, err error, c *Client) bool
 			t := input[i]
 			ACID := int(cmp.BytesToInt16(input[i+1:i+3]))
 			id := int(cmp.BytesToInt16(input[i+3:i+5]))
-			printLogF(".....Client: MCreating SyncVar with ID=%v, ACID='%v' , initiated by server=%s", id, ACID, m.Client.RemoteAddr().String())
+			//printLogF(".....Client: MCreating SyncVar with ID=%v, ACID='%v' , initiated by server=%s", id, ACID, m.Client.RemoteAddr().String())
 			m.SyncvarsByACID[ACID] = GetSyncVarOfType(t)
 			m.SyncvarsByID[id] = m.SyncvarsByACID[ACID]
 			m.ACIDToID[ACID] = id
 		}
+		printLogF(".....Client: MCreating %v SyncVars, initiated by server=%s", len(input)/5, m.Client.RemoteAddr().String())
 	}else if input[0] == SYNCVAR_UPDATE {
 		m.onSyncVarUpdateC(input[1:])
 	}else if input[0] == SYNCVAR_DELETION {
@@ -169,15 +199,18 @@ func (m *ClientManager) processRegisterVarsConfirm(data []byte) {
 		id := int(cmp.BytesToInt16(data[i+2:i+4]))
 		m.SyncvarsByID[id] = m.SyncvarsByACID[ACID]
 		m.ACIDToID[ACID] = id
-		printLogF(".....Client: MCreating SyncVar with ID=%v, ACID='%v' , confirmed by server=%s", id, ACID, m.Client.RemoteAddr().String())
+		//printLogF(".....Client: MCreating SyncVar with ID=%v, ACID='%v' , confirmed by server=%s", id, ACID, m.Client.RemoteAddr().String())
 	}
+	printLogF(".....Client: MCreating %v SyncVars, confirmed by server=%s", len(data)/4, m.Client.RemoteAddr().String())
 }
 func (m *ClientManager) onSyncVarUpdateC(data []byte) {
+	num := 0
 	for true {
+		num ++
 		id := int(cmp.BytesToInt16(data[:2]))
 		l := cmp.BytesToInt16(data[2:4])
 		dat := data[4:4+l]
-		printLogF(".....Client: Updating SyncVar with ID=%v: len(dat)=%v, initiated by server=%s", id, l, m.Client.RemoteAddr().String())
+		//printLogF(".....Client: Updating SyncVar with ID=%v: len(dat)=%v, initiated by server=%s", id, l, m.Client.RemoteAddr().String())
 		data = data[4+l:]
 		m.SyncvarsByID[id].SetData(dat)
 		if fnc, ok := m.SyncVarOnChange[id]; ok {
@@ -187,4 +220,15 @@ func (m *ClientManager) onSyncVarUpdateC(data []byte) {
 			break
 		}
 	}
+	printLogF(".....Client: Updating %v SyncVars, initiated by server=%s", num, m.Client.RemoteAddr().String())
+}
+
+//Returns true if e is in s
+func containsI(s []int, e int) bool {
+	for _, a := range s {
+		if a == e {
+			return true
+		}
+	}
+	return false
 }

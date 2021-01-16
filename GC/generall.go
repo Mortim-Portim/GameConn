@@ -4,7 +4,7 @@ import (
 	"log"
 )
 
-const PRINT_LOG = true
+var PRINT_LOG = true
 
 func printLogF(str string, is ...interface{}) {
 	if PRINT_LOG {

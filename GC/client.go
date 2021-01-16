@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/signal"
 	"time"
+	"sync"
 	ws "github.com/gorilla/websocket"
 )
 
@@ -20,8 +21,14 @@ type Client struct {
 	sendMessage   []byte
 	confirmed	  chan bool
 	pendingConfirms int
+	
+	topLevelLock, lowLevelLock, readLock sync.Mutex
+}
+func (c *Client) GetPendingConfirms() int {
+	return c.pendingConfirms
 }
 func (c *Client) Send(bs []byte) {
+	c.topLevelLock.Lock()
 	time.Sleep(ARTIFICIAL_CLIENT_PING)
 	c.pendingConfirms ++
 	c.sendMessage = bs
@@ -74,27 +81,31 @@ func (c *Client) MakeConn(addr string) error {
 	go func() {
 		defer close(c.done)
 		for {
-			if c != nil && c.InputHandler != nil {
+			if c != nil {
+				c.readLock.Lock()
 				mt, msg, err := c.ReadMessage()
-				if err != nil {
-					return
-				}
-				if !c.InputHandler(mt, msg, err, c) {
-					return
-				}
-				err2 := c.WriteMessage(ws.PongMessage, []byte{})
-				if err2 != nil {
-					return
+				c.readLock.Unlock()
+				if mt == ws.BinaryMessage {
+					if err != nil {return}
+					if c.InputHandler != nil && !c.InputHandler(mt, msg, err, c) {return}
+					c.lowLevelLock.Lock()
+					err2 := c.WriteMessage(ws.PongMessage, []byte{})
+					if err2 != nil {
+						return
+					}
+					c.lowLevelLock.Unlock()
 				}
 			}
 		}
 	}()
 
 	//Send an initial message
+	c.lowLevelLock.Lock()
 	err = c.WriteMessage(ws.TextMessage, []byte{NEWCONNECTION})
 	if err != nil {
 		return err
 	}
+	c.lowLevelLock.Unlock()
 
 	//wait for input an send it on a separate thread
 	c.waiting = make(chan struct{})
@@ -106,13 +117,16 @@ func (c *Client) MakeConn(addr string) error {
 				return
 			case <-c.waiting:
 				if c.sendMessage != nil {
+					c.lowLevelLock.Lock()
 					err := c.WriteMessage(ws.BinaryMessage, c.sendMessage)
 					if err != nil {
 						return
 					}
-					c.waiting = make(chan struct{})
+					c.lowLevelLock.Unlock()
 					c.sendMessage = nil
 				}
+				c.waiting = make(chan struct{})
+				c.topLevelLock.Unlock()
 			case <-c.interrupt:
 				c.CloseConn()
 				return
@@ -124,10 +138,17 @@ func (c *Client) MakeConn(addr string) error {
 }
 //Should only be called with a delay
 func (c *Client) CloseConn() error {
+	c.readLock.Lock()
+	c.lowLevelLock.Lock()
+	c.topLevelLock.Lock()
 	err := c.WriteMessage(ws.BinaryMessage, []byte{CLOSECONNECTION})
 	if err != nil {
 		return err
 	}
 	time.Sleep(time.Second)
+	c.pendingConfirms = 1
+	if c.confirmed != nil {
+		close(c.confirmed)
+	}
 	return nil
 }

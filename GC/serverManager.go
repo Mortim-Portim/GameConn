@@ -7,8 +7,9 @@ import (
 
 type Handler interface {
 	RegisterSyncVar(sv SyncVar, ACID int)
-	RegisterSyncVars(svs []SyncVar, ACIDs ...int)
+	RegisterSyncVars(svs map[int]SyncVar)
 	RegisterOnChangeFunc(ACID int, fnc func(SyncVar, int))
+	UpdateSyncVarsWithACIDs(...int) int
 	UpdateSyncVars() int
 	DeleteSyncVar(ACID int)
 }
@@ -43,7 +44,7 @@ func (ch *ClientHandler) RegisterSyncVar(sv SyncVar, ACID int) {
 func (ch *ClientHandler) RegisterSyncVars(svs map[int]SyncVar) {
 	data := []byte{SYNCVAR_M_REGISTRY}
 	for ACID,sv := range(svs) {
-		printLogF("#####Server: MCreating SyncVar with ID=%v, ACID='%v', type=%v , initiated by self=%s", ch.idCounter, ACID, sv.Type(), ch.Conn.LocalAddr().String())
+		//printLogF("#####Server: MCreating SyncVar with ID=%v, ACID='%v', type=%v , initiated by self=%s", ch.idCounter, ACID, sv.Type(), ch.Conn.LocalAddr().String())
 		ch.SyncvarsByACID[ACID] 		= sv
 		ch.SyncvarsByID[ch.idCounter] 	= sv
 		ch.ACIDToID[ACID] 				= ch.idCounter
@@ -52,6 +53,7 @@ func (ch *ClientHandler) RegisterSyncVars(svs map[int]SyncVar) {
 		data = append(data, cmp.Int16ToBytes(int16(ch.idCounter))...)
 		ch.idCounter ++
 	}
+	printLogF("#####Server: MCreating %v SyncVars, initiated by self=%s", len(svs), ch.Conn.LocalAddr().String())
 	ch.Server.Send(data, ch.Server.ConnToIdx[ch.Conn])
 }
 func (ch *ClientHandler) RegisterOnChangeFunc(ACID int, fnc func(SyncVar, int)) {
@@ -59,6 +61,26 @@ func (ch *ClientHandler) RegisterOnChangeFunc(ACID int, fnc func(SyncVar, int)) 
 	if ok {
 		ch.SyncVarOnChange[id] = fnc
 	}
+}
+func (ch *ClientHandler) UpdateSyncVarsWithACIDs(ACIDs ...int) (uc int) {
+	var_data := []byte{SYNCVAR_UPDATE}
+	for ACID,sv := range(ch.SyncvarsByACID) {
+		if sv.IsDirty() && containsI(ACIDs, ACID) {
+			uc ++
+			syncDat := sv.GetData()
+			//printLogF(".....Client: Updating SyncVar with ID=%v: len(dat)=%v, initiated by self=%s", id, len(syncDat), m.Client.LocalAddr().String())
+			data := append(cmp.Int16ToBytes(int16(len(syncDat))), syncDat...)
+			payload := append(cmp.Int16ToBytes(int16(ch.ACIDToID[ACID])), data...)
+			var_data = append(var_data, payload...)
+		}
+	}
+	if uc > 0 {
+		printLogF("#####Server: Updating %v SyncVars, initiated by self=%s", uc, ch.Conn.LocalAddr().String())
+	}
+	if len(var_data) > 1 {
+		ch.Server.Send(var_data, ch.Server.ConnToIdx[ch.Conn])
+	}
+	return
 }
 func (ch *ClientHandler) UpdateSyncVars() (uc int) {
 	var_data := []byte{SYNCVAR_UPDATE}
@@ -69,8 +91,11 @@ func (ch *ClientHandler) UpdateSyncVars() (uc int) {
 			data := append(cmp.Int16ToBytes(int16(len(syncDat))), syncDat...)
 			payload := append(cmp.Int16ToBytes(int16(id)), data...)
 			var_data = append(var_data, payload...)
-			printLogF("#####Server: Updating SyncVar with ID=%v: len(dat)=%v, initiated by self=%s", id, len(syncDat), ch.Conn.LocalAddr().String())
+			//printLogF("#####Server: Updating SyncVar with ID=%v: len(dat)=%v, initiated by self=%s", id, len(syncDat), ch.Conn.LocalAddr().String())
 		}
+	}
+	if uc > 0 {
+		printLogF("#####Server: Updating %v SyncVars, initiated by self=%s", uc, ch.Conn.LocalAddr().String())
 	}
 	if len(var_data) > 1 {
 		ch.Server.Send(var_data, ch.Server.ConnToIdx[ch.Conn])
@@ -93,7 +118,9 @@ func (ch *ClientHandler) deleteSyncVarRemote(ACID int, id int) {
 	ch.Server.Send(append([]byte{SYNCVAR_DELETION}, data...), ch.Server.ConnToIdx[ch.Conn])
 }
 func (ch *ClientHandler) onSyncVarUpdateC(data []byte) {
+	num := 0
 	for true {
+		num ++
 		id := int(cmp.BytesToInt16(data[:2]))
 		l := cmp.BytesToInt16(data[2:4])
 		dat := data[4:4+l]
@@ -105,8 +132,9 @@ func (ch *ClientHandler) onSyncVarUpdateC(data []byte) {
 		if len(data) <= 0 {
 			break
 		}
-		printLogF("#####Server: Updating SyncVar with ID=%v: len(dat)=%v, initiated by client=%s", id, l, ch.Conn.RemoteAddr().String())
+		//printLogF("#####Server: Updating SyncVar with ID=%v: len(dat)=%v, initiated by client=%s", id, l, ch.Conn.RemoteAddr().String())
 	}
+	printLogF("#####Server: Updating %v SyncVars, initiated by client=%s", num, ch.Conn.RemoteAddr().String())
 }
 func (ch *ClientHandler) processSyncVarRegistry(data []byte) {
 	t := data[0]

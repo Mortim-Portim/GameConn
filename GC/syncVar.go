@@ -91,7 +91,9 @@ func (sv *SyncInt64) MakeDirty() {
 }
 func (sv *SyncInt64) GetData() []byte {
 	sv.UpdatedPP()
-	sv.dirty = sv.AllUpdated()
+	if sv.AllUpdated() {
+		sv.dirty = false
+	}
 	buf := new(bytes.Buffer)
 	binary.Write(buf, binary.LittleEndian, sv.variable)
 	return buf.Bytes()
@@ -134,7 +136,9 @@ func (sv *SyncInt16) MakeDirty() {
 }
 func (sv *SyncInt16) GetData() []byte {
 	sv.UpdatedPP()
-	sv.dirty = sv.AllUpdated()
+	if sv.AllUpdated() {
+		sv.dirty = false
+	}
 	return cmp.Int16ToBytes(sv.variable)
 }
 func (sv *SyncInt16) SetData(variable []byte) {
@@ -173,7 +177,9 @@ func (sv *SyncUInt16) MakeDirty() {
 }
 func (sv *SyncUInt16) GetData() []byte {
 	sv.UpdatedPP()
-	sv.dirty = sv.AllUpdated()
+	if sv.AllUpdated() {
+		sv.dirty = false
+	}
 	return cmp.UInt16ToBytes(sv.variable)
 }
 func (sv *SyncUInt16) SetData(variable []byte) {
@@ -212,7 +218,9 @@ func (sv *SyncBool) MakeDirty() {
 }
 func (sv *SyncBool) GetData() []byte {
 	sv.UpdatedPP()
-	sv.dirty = sv.AllUpdated()
+	if sv.AllUpdated() {
+		sv.dirty = false
+	}
 	return []byte{cmp.BoolToByte(sv.variable)}
 }
 func (sv *SyncBool) SetData(variable []byte) {
@@ -252,7 +260,9 @@ func (sv *SyncByte) MakeDirty() {
 }
 func (sv *SyncByte) GetData() []byte {
 	sv.UpdatedPP()
-	sv.dirty = sv.AllUpdated()
+	if sv.AllUpdated() {
+		sv.dirty = false
+	}
 	return []byte{sv.variable}
 }
 func (sv *SyncByte) SetData(variable []byte) {
@@ -295,7 +305,9 @@ func (sv *SyncByteCoord) MakeDirty() {
 }
 func (sv *SyncByteCoord) GetData() []byte {
 	sv.UpdatedPP()
-	sv.dirty = sv.AllUpdated()
+	if sv.AllUpdated() {
+		sv.dirty = false
+	}
 	return []byte{byte(int(sv.x)+128), byte(int(sv.y)+128)}
 }
 func (sv *SyncByteCoord) SetData(data []byte) {
@@ -336,7 +348,9 @@ func (sv *SyncFloat64) MakeDirty() {
 }
 func (sv *SyncFloat64) GetData() []byte {
 	sv.UpdatedPP()
-	sv.dirty = sv.AllUpdated()
+	if sv.AllUpdated() {
+		sv.dirty = false
+	}
 	buf := new(bytes.Buffer)
 	binary.Write(buf, binary.LittleEndian, sv.variable)
 	return buf.Bytes()
@@ -390,7 +404,9 @@ func (sv *SyncString) MakeDirty() {
 }
 func (sv *SyncString) GetData() []byte {
 	sv.UpdatedPP()
-	sv.dirty = sv.AllUpdated()
+	if sv.AllUpdated() {
+		sv.dirty = false
+	}
 	return []byte(sv.variable)
 }
 func (sv *SyncString) SetData(variable []byte) {
