@@ -2,7 +2,8 @@ package GC
 
 import (
 	cmp "github.com/mortim-portim/GraphEng/Compression"
-	//"sync"
+	"sync"
+	"fmt"
 )
 
 /**
@@ -49,6 +50,8 @@ type ClientManager struct {
 	ACIDToID		map[int]int
 	SyncVarOnChange map[int]func(SyncVar, int)
 	
+	SV_ID_L, SV_ACID_L, ACID_ID_L, SV_chng sync.Mutex
+	
 	InputHandler  func(mt int, msg []byte, err error, c *Client) (alive bool)
 	
 	//SV_ID, SV_ACID, ACID_ID, Chng sync.Mutex
@@ -56,7 +59,9 @@ type ClientManager struct {
 func (m *ClientManager) RegisterSyncVar(sv SyncVar, ACID int) {
 	printLogF(".....Client: Requesting SyncVar with ACID='%v', type=%v , initiated by self=%s", ACID, sv.Type(), m.Client.LocalAddr().String())
 	sv.IsRegisteredTo(1)
+	m.SV_ACID_L.Lock()
 	m.SyncvarsByACID[ACID] = sv
+	m.SV_ACID_L.Unlock()
 	m.Client.Send(append([]byte{SYNCVAR_REGISTRY, sv.Type()}, cmp.Int16ToBytes(int16(ACID))...))
 }
 func (m *ClientManager) RegisterSyncVars(svs map[int]SyncVar) {
@@ -64,7 +69,9 @@ func (m *ClientManager) RegisterSyncVars(svs map[int]SyncVar) {
 	for ACID,sv := range(svs) {
 		//printLogF(".....Client: MRequesting SyncVar with ACID='%v', type=%v , initiated by self=%s", ACID, sv.Type(), m.Client.LocalAddr().String())
 		sv.IsRegisteredTo(1)
+		m.SV_ACID_L.Lock()
 		m.SyncvarsByACID[ACID] = sv
+		m.SV_ACID_L.Unlock()
 		data = append(data, sv.Type())
 		data = append(data, cmp.Int16ToBytes(int16(ACID))...)
 	}
@@ -72,15 +79,20 @@ func (m *ClientManager) RegisterSyncVars(svs map[int]SyncVar) {
 	m.Client.Send(data)
 }
 func (m *ClientManager) RegisterOnChangeFunc(ACID int, fnc func(SyncVar, int)) {
+	m.ACID_ID_L.Lock()
 	id, ok := m.ACIDToID[ACID]
+	m.ACID_ID_L.Unlock()
 	if ok {
+		m.SV_chng.Lock()
 		m.SyncVarOnChange[id] = fnc
+		m.SV_chng.Unlock()
 	}
 }
 
 func (m *ClientManager) UpdateSyncVarsWithACIDs(ACIDs ...int) (uc int) {
 	lastACID := -1
 	var_data := []byte{SYNCVAR_UPDATE}
+	m.SV_ACID_L.Lock()
 	for ACID,sv := range(m.SyncvarsByACID) {
 		if sv.IsDirty() && containsI(ACIDs, ACID) {
 			uc ++
@@ -90,7 +102,9 @@ func (m *ClientManager) UpdateSyncVarsWithACIDs(ACIDs ...int) (uc int) {
 			
 			syncDat := sv.GetData()
 			data := append(cmp.Int16ToBytes(int16(len(syncDat))), syncDat...)
+			m.ACID_ID_L.Lock()
 			payload := append(cmp.Int16ToBytes(int16(m.ACIDToID[ACID])), data...)
+			m.ACID_ID_L.Unlock()
 			var_data = append(var_data, payload...)
 		}
 	}
@@ -100,6 +114,7 @@ func (m *ClientManager) UpdateSyncVarsWithACIDs(ACIDs ...int) (uc int) {
 		//sv := m.SyncvarsByACID[lastACID]
 		//printLogF(".....Client: Updating SyncVar with ACID: %v of type %v: %v, initiated by self=%s", lastACID, sv.Type(), sv, m.Client.LocalAddr().String())
 	}
+	m.SV_ACID_L.Unlock()
 	if len(var_data) > 1 {
 		m.Client.Send(var_data)
 	}
@@ -108,6 +123,7 @@ func (m *ClientManager) UpdateSyncVarsWithACIDs(ACIDs ...int) (uc int) {
 func (m *ClientManager) UpdateSyncVars() (uc int) {
 	lastID := -1
 	var_data := []byte{SYNCVAR_UPDATE}
+	m.SV_ID_L.Lock()
 	for id,sv := range(m.SyncvarsByID) {
 		if sv.IsDirty() {
 			uc ++
@@ -125,21 +141,30 @@ func (m *ClientManager) UpdateSyncVars() (uc int) {
 		sv := m.SyncvarsByID[lastID]
 		printLogF(".....Client: Updating SyncVar with ID: %v of type %v: %v, initiated by self=%s", lastID, sv.Type(), sv, m.Client.LocalAddr().String())
 	}
+	m.SV_ID_L.Unlock()
 	if len(var_data) > 1 {
 		m.Client.Send(var_data)
 	}
 	return
 }
 func (m *ClientManager) DeleteSyncVar(ACID int) {
+	m.ACID_ID_L.Lock()
 	id := m.ACIDToID[ACID]
+	m.ACID_ID_L.Unlock()
 	printLogF(".....Client: Deleting SyncVar with ID=%v, ACID='%v' , initiated by self=%s", id, ACID, m.Client.LocalAddr().String())
 	m.deleteSyncVarLocal(ACID, id)
 	m.deleteSyncVarRemote(ACID, id)
 }
 func (m *ClientManager) deleteSyncVarLocal(ACID int, id int) {
+	m.SV_ID_L.Lock()
 	delete(m.SyncvarsByID, id)
+	m.SV_ID_L.Unlock()
+	m.SV_ACID_L.Lock()
 	delete(m.SyncvarsByACID, ACID)
+	m.SV_ACID_L.Unlock()
+	m.ACID_ID_L.Lock()
 	delete(m.ACIDToID, ACID)
+	m.ACID_ID_L.Unlock()
 }
 func (m *ClientManager) deleteSyncVarRemote(ACID int, id int) {
 	data := append(cmp.Int16ToBytes(int16(id)), cmp.Int16ToBytes(int16(ACID))...)
@@ -158,9 +183,15 @@ func (m *ClientManager) receive(mt int, input []byte, err error, c *Client) bool
 		ACID := int(cmp.BytesToInt16(input[2:4]))
 		id := int(cmp.BytesToInt16(input[4:6]))
 		printLogF(".....Client: Creating SyncVar with ID=%v, ACID='%v' , initiated by server=%s", id, ACID, m.Client.RemoteAddr().String())
+		m.SV_ACID_L.Lock()
 		m.SyncvarsByACID[ACID] = GetSyncVarOfType(t)
+		m.SV_ID_L.Lock()
 		m.SyncvarsByID[id] = m.SyncvarsByACID[ACID]
+		m.SV_ACID_L.Unlock()
+		m.SV_ID_L.Unlock()
+		m.ACID_ID_L.Lock()
 		m.ACIDToID[ACID] = id
+		m.ACID_ID_L.Unlock()
 	}else if input[0] == SYNCVAR_M_REGISTRY {
 		input = input[1:]
 		for i := 0; i < len(input); i += 5 {
@@ -168,9 +199,15 @@ func (m *ClientManager) receive(mt int, input []byte, err error, c *Client) bool
 			ACID := int(cmp.BytesToInt16(input[i+1:i+3]))
 			id := int(cmp.BytesToInt16(input[i+3:i+5]))
 			//printLogF(".....Client: MCreating SyncVar with ID=%v, ACID='%v' , initiated by server=%s", id, ACID, m.Client.RemoteAddr().String())
+			m.SV_ACID_L.Lock()
 			m.SyncvarsByACID[ACID] = GetSyncVarOfType(t)
+			m.SV_ID_L.Lock()
 			m.SyncvarsByID[id] = m.SyncvarsByACID[ACID]
+			m.SV_ACID_L.Unlock()
+			m.SV_ID_L.Unlock()
+			m.ACID_ID_L.Lock()
 			m.ACIDToID[ACID] = id
+			m.ACID_ID_L.Unlock()
 		}
 		printLogF(".....Client: MCreating %v SyncVars, initiated by server=%s", len(input)/5, m.Client.RemoteAddr().String())
 	}else if input[0] == SYNCVAR_UPDATE {
@@ -189,16 +226,28 @@ func (m *ClientManager) receive(mt int, input []byte, err error, c *Client) bool
 func (m *ClientManager) processRegisterVarConfirm(data []byte) {
 	ACID := int(cmp.BytesToInt16(data[0:2]))
 	id := int(cmp.BytesToInt16(data[2:4]))
+	m.SV_ID_L.Lock()
+	m.SV_ACID_L.Lock()
 	m.SyncvarsByID[id] = m.SyncvarsByACID[ACID]
+	m.SV_ACID_L.Unlock()
+	m.SV_ID_L.Unlock()
+	m.ACID_ID_L.Lock()
 	m.ACIDToID[ACID] = id
+	m.ACID_ID_L.Unlock()
 	printLogF(".....Client: Creating SyncVar with ID=%v, ACID='%v' , confirmed by server=%s", id, ACID, m.Client.RemoteAddr().String())
 }
 func (m *ClientManager) processRegisterVarsConfirm(data []byte) {
 	for i := 0; i < len(data); i += 4 {
 		ACID := int(cmp.BytesToInt16(data[i:i+2]))
 		id := int(cmp.BytesToInt16(data[i+2:i+4]))
+		m.SV_ID_L.Lock()
+		m.SV_ACID_L.Lock()
 		m.SyncvarsByID[id] = m.SyncvarsByACID[ACID]
+		m.SV_ACID_L.Unlock()
+		m.SV_ID_L.Unlock()
+		m.ACID_ID_L.Lock()
 		m.ACIDToID[ACID] = id
+		m.ACID_ID_L.Unlock()
 		//printLogF(".....Client: MCreating SyncVar with ID=%v, ACID='%v' , confirmed by server=%s", id, ACID, m.Client.RemoteAddr().String())
 	}
 	printLogF(".....Client: MCreating %v SyncVars, confirmed by server=%s", len(data)/4, m.Client.RemoteAddr().String())
@@ -212,23 +261,19 @@ func (m *ClientManager) onSyncVarUpdateC(data []byte) {
 		dat := data[4:4+l]
 		//printLogF(".....Client: Updating SyncVar with ID=%v: len(dat)=%v, initiated by server=%s", id, l, m.Client.RemoteAddr().String())
 		data = data[4+l:]
-		m.SyncvarsByID[id].SetData(dat)
+		m.SV_ID_L.Lock()
+		sv,ok := m.SyncvarsByID[id]
+		m.SV_ID_L.Unlock()
+		if !ok {
+			panic(fmt.Sprintf("%v not in map %v, data: %v, l: %v\n", id, m.SyncvarsByID, dat, l))
+		}
+		sv.SetData(dat)
 		if fnc, ok := m.SyncVarOnChange[id]; ok {
-			fnc(m.SyncvarsByID[id], id)
+			fnc(sv, id)
 		}
 		if len(data) <= 0 {
 			break
 		}
 	}
 	printLogF(".....Client: Updating %v SyncVars, initiated by server=%s", num, m.Client.RemoteAddr().String())
-}
-
-//Returns true if e is in s
-func containsI(s []int, e int) bool {
-	for _, a := range s {
-		if a == e {
-			return true
-		}
-	}
-	return false
 }

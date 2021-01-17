@@ -12,23 +12,23 @@ import (
 
 /**
 TODO is multiple useres connect at the same time
-
+User disappear
 **/
 
-const ARTIFICIAL_CLIENT_PING = time.Millisecond*30
-const ARTIFICIAL_SERVER_PING = time.Millisecond*30
+const ARTIFICIAL_CLIENT_PING = 0//time.Millisecond*30
+const ARTIFICIAL_SERVER_PING = 0//time.Millisecond*30
 
 type Server struct {
-	ConnToIdx	map[*ws.Conn]int
-	topLevelLock map[int]*sync.Mutex
+	Closing, AllConnections		[]*ws.Conn
+	
+	topLevelLock map[*ws.Conn]*sync.Mutex
 	dataLock sync.Mutex
+	confirmLocks map[*ws.Conn]*sync.Mutex
 	
-	confirmLocks map[int]*sync.Mutex
-	
-	Connections map[int]chan bool
-	Data        map[int]([]byte)
-	Confirms	map[int]chan bool
-	PendingConfirms map[int]int
+	Connections map[*ws.Conn]chan bool
+	Data        map[*ws.Conn]([]byte)
+	Confirms	map[*ws.Conn]chan bool
+	PendingConfirms map[*ws.Conn]int
 	connCounter int
 
 	upgrader     *ws.Upgrader
@@ -40,64 +40,76 @@ type Server struct {
 func GetNewServer() (s *Server) {
 	s = &Server{}
 	s.upgrader = &ws.Upgrader{}
-	s.ConnToIdx = 	make(map[*ws.Conn]int)
-	s.Connections = make(map[int]chan bool)
-	s.Data = 		make(map[int]([]byte))
-	s.Confirms = 	make(map[int]chan bool)
-	s.PendingConfirms = make(map[int]int)
+	s.Connections = make(map[*ws.Conn]chan bool)
+	s.Data = 		make(map[*ws.Conn]([]byte))
+	s.Confirms = 	make(map[*ws.Conn]chan bool)
+	s.PendingConfirms = make(map[*ws.Conn]int)
 	s.connCounter = 0
-	s.topLevelLock = make(map[int]*sync.Mutex)
-	s.confirmLocks = make(map[int]*sync.Mutex)
+	s.topLevelLock = make(map[*ws.Conn]*sync.Mutex)
+	s.confirmLocks = make(map[*ws.Conn]*sync.Mutex)
+	s.Closing = make([]*ws.Conn, 0)
+	s.AllConnections = make([]*ws.Conn, 0)
 	return
 }
-func (s *Server) Send(bs []byte, ci int) {
-	s.topLevelLock[ci].Lock()
-	fmt.Println("Sending to connection ", ci)
-	if _, ok := s.Confirms[ci]; !ok {
-		s.Confirms[ci] = make(chan bool)
+func (s *Server) isConnClosed(c *ws.Conn) bool {
+	return containsC(s.Closing, c)
+}
+func (s *Server) Send(bs []byte, c *ws.Conn) {
+	if s.isConnClosed(c) {
+		return
 	}
-	if _, ok := s.PendingConfirms[ci]; !ok {
-		s.PendingConfirms[ci] = 0
-	}
-	s.PendingConfirms[ci] ++
+	
+	s.topLevelLock[c].Lock()
+	fmt.Printf("Sending to connection %p\n", c)
+	s.PendingConfirms[c] ++
 	s.dataLock.Lock()
-	s.Data[ci] = bs
+	s.Data[c] = bs
 	s.dataLock.Unlock()
-	ch, ok := s.Connections[ci]
+	ch, ok := s.Connections[c]
 	if ok {
 		ch <- true
 	}
 }
-func (s *Server) WaitForConfirmation(ci int) {
-	s.confirmLocks[ci].Lock()
-	if ch, ok := s.Confirms[ci]; ok {
-		for s.PendingConfirms[ci] > 0 {
-			fmt.Printf("Waiting for %v confirmations on %v\n", s.PendingConfirms[ci], ci)
-			<-ch
-			s.PendingConfirms[ci] --
-		}
-		fmt.Printf("Waiting finished on %v\n", ci)
+func (s *Server) WaitForConfirmation(c *ws.Conn) {
+	if s.isConnClosed(c) {
+		fmt.Printf("Conn %p is closing, not waiting\n", c)
+		return
 	}
-	s.confirmLocks[ci].Unlock()
+	
+	lock := s.confirmLocks[c]
+	if lock != nil {
+		lock.Lock()
+	}
+	if ch, ok := s.Confirms[c]; ok {
+		for s.PendingConfirms[c] > 0 {
+			fmt.Printf("Waiting for %v confirmations on %p\n", s.PendingConfirms[c], c)
+			<-ch
+			s.PendingConfirms[c] --
+		}
+		fmt.Printf("Waiting finished on %p\n", c)
+	}
+	if lock != nil {
+		lock.Unlock()
+	}
 }
-func (s *Server) WaitForConfirmations(ci ...int) {
-	for _,i := range(ci) {
-		s.WaitForConfirmation(i)
+func (s *Server) WaitForConfirmations(cs ...*ws.Conn) {
+	for _,c := range(cs) {
+		s.WaitForConfirmation(c)
 	}
 }
 func (s *Server) WaitForAllConfirmations() {
-	for i := 0; i < s.connCounter; i++ {
-		s.WaitForConfirmation(i)
+	for _,c := range(s.AllConnections) {
+		s.WaitForConfirmation(c)
 	}
 }
-func (s *Server) SendToMultiple(bs []byte, ci ...int) {
-	for _,i := range(ci) {
-		s.Send(bs, i)
+func (s *Server) SendToMultiple(bs []byte, cs ...*ws.Conn) {
+	for _,c := range(cs) {
+		s.Send(bs, c)
 	}
 }
 func (s *Server) SendAll(bs []byte) {
-	for i := 0; i < s.connCounter; i++ {
-		s.Send(bs, i)
+	for _,c := range(s.AllConnections) {
+		s.Send(bs, c)
 	}
 }
 
@@ -123,36 +135,39 @@ func (s *Server) home(w http.ResponseWriter, r *http.Request) {
 	}
 	
 	c.SetPongHandler(func(appData string) error {
-		if _, ok := s.Confirms[s.ConnToIdx[c]]; ok {
-			fmt.Println("Confirming for ", s.ConnToIdx[c])
-			s.Confirms[s.ConnToIdx[c]] <- true
+		if _, ok := s.Confirms[c]; ok {
+			fmt.Printf("Confirming for %p\n", c)
+			s.Confirms[c] <- true
 		}
 		return nil
 	})
 	
-	idx := s.connCounter
+	s.AllConnections = append(s.AllConnections, c)
 	var Locker, lowLevelLock, confirmL sync.Mutex
-	s.confirmLocks[idx] = &confirmL
-	s.topLevelLock[idx] = &Locker
-	s.Connections[idx] = make(chan bool)
-	s.ConnToIdx[c] = idx
+	s.confirmLocks[c] = &confirmL
+	s.topLevelLock[c] = &Locker
+	
+	s.Connections[c] = make(chan bool)
+	s.Confirms[c] = make(chan bool)
+	s.PendingConfirms[c] = 0
+	
 	s.connCounter++
 	go func() {
 		for {
-			<-s.Connections[idx]
+			<-s.Connections[c]
 			time.Sleep(ARTIFICIAL_SERVER_PING)
 			lowLevelLock.Lock()
 			s.dataLock.Lock()
-			err = c.WriteMessage(ws.BinaryMessage, s.Data[idx])
+			err = c.WriteMessage(ws.BinaryMessage, s.Data[c])
 			if err != nil {
 				break
 			}
 			s.dataLock.Unlock()
 			lowLevelLock.Unlock()
 			s.dataLock.Lock()
-			s.Data[idx] = nil
+			s.Data[c] = nil
 			s.dataLock.Unlock()
-			s.topLevelLock[idx].Unlock()
+			s.topLevelLock[c].Unlock()
 		}
 	}()
 
@@ -160,7 +175,7 @@ func (s *Server) home(w http.ResponseWriter, r *http.Request) {
 	for {
 		mt, msg, err := c.ReadMessage()
 		if err != nil {
-			log.Printf("Error: %v, msg: %v, mt: %v\n", err, msg, mt)
+			log.Printf("Error %p disconnects: %v, msg: %v, mt: %v\n", c, err, msg, mt)
 			s.closeConn(c)
 			if s.OnCloseConn != nil {
 				s.OnCloseConn(c, mt, msg, err, s)
@@ -191,10 +206,33 @@ func (s *Server) home(w http.ResponseWriter, r *http.Request) {
 	}
 }
 func (s *Server) closeConn(c *ws.Conn) {
-	s.PendingConfirms[s.ConnToIdx[c]] = 1
-	if _, ok := s.Confirms[s.ConnToIdx[c]]; ok {
-		close(s.Confirms[s.ConnToIdx[c]])
+	s.Closing = append(s.Closing, c)
+	fmt.Printf("Closing connection to %p\n", c)
+	time.Sleep(time.Millisecond)
+	
+	fmt.Printf("Locking top level for %p\n", c)
+	s.topLevelLock[c].Lock()
+	//s.confirmLocks[c].Lock()
+	fmt.Printf("Releasing pending confirms for %p\n", c)
+	s.PendingConfirms[c] = 1
+	if _, ok := s.Confirms[c]; ok {
+		close(s.Confirms[c])
 	}
+	
+	fmt.Printf("Deleting map entries for %p\n", c)
+	delete(s.topLevelLock, c)
+	delete(s.confirmLocks, c)
+	delete(s.Connections, c)
+	s.dataLock.Lock()
+	delete(s.Data, c)
+	s.dataLock.Unlock()
+	delete(s.Confirms, c)
+	delete(s.PendingConfirms, c)
+	
+	fmt.Printf("Removing %p from Allconnections: %v\n",c, s.AllConnections)
+	s.AllConnections = removeC(s.AllConnections, c)
+	s.connCounter --
+	fmt.Printf("Finished Closing Connection %p: AllConnections: %v, counter: %v\n", c, s.AllConnections, s.connCounter)
 }
 func GetLocalIP() string {
 	addrs, err := net.InterfaceAddrs()

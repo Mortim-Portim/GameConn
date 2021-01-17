@@ -182,6 +182,9 @@ func (sv *SyncUInt16) GetData() []byte {
 	}
 	return cmp.UInt16ToBytes(sv.variable)
 }
+func (sv *SyncUInt16) Clean() {
+	sv.dirty = false
+}
 func (sv *SyncUInt16) SetData(variable []byte) {
 	sv.dirty = false
 	sv.variable = cmp.BytesToUInt16(variable)

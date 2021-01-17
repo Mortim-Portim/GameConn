@@ -35,7 +35,7 @@ type ClientHandler struct {
 	idCounter int
 }
 func (ch *ClientHandler) RegisterSyncVar(sv SyncVar, ACID int) {
-	printLogF("#####Server: Creating SyncVar with ID=%v, ACID='%v', type=%v , initiated by self=%s", ch.idCounter, ACID, sv.Type(), ch.Conn.LocalAddr().String())
+	printLogF("#####Server: Creating SyncVar with ID=%v, ACID='%v', type=%v , on conn %p\n", ch.idCounter, ACID, sv.Type(), ch.Conn)
 	ch.SV_ACID_L.Lock()
 	ch.SyncvarsByACID[ACID] 		= sv
 	ch.SV_ACID_L.Unlock()
@@ -46,7 +46,7 @@ func (ch *ClientHandler) RegisterSyncVar(sv SyncVar, ACID int) {
 	ch.ACIDToID[ACID] 				= ch.idCounter
 	ch.ACID_ID_L.Unlock()
 	resp := append(append([]byte{SYNCVAR_REGISTRY, sv.Type()}, cmp.Int16ToBytes(int16(ACID))...), cmp.Int16ToBytes(int16(ch.idCounter))...)
-	ch.Server.Send(resp, ch.Server.ConnToIdx[ch.Conn])
+	ch.Server.Send(resp, ch.Conn)
 	ch.idCounter ++
 }
 func (ch *ClientHandler) RegisterSyncVars(svs map[int]SyncVar) {
@@ -67,8 +67,8 @@ func (ch *ClientHandler) RegisterSyncVars(svs map[int]SyncVar) {
 		data = append(data, cmp.Int16ToBytes(int16(ch.idCounter))...)
 		ch.idCounter ++
 	}
-	printLogF("#####Server: MCreating %v SyncVars, initiated by self=%s", len(svs), ch.Conn.LocalAddr().String())
-	ch.Server.Send(data, ch.Server.ConnToIdx[ch.Conn])
+	printLogF("#####Server: MCreating %v SyncVars, on conn %p\n", len(svs), ch.Conn)
+	ch.Server.Send(data, ch.Conn)
 }
 func (ch *ClientHandler) RegisterOnChangeFunc(ACID int, fnc func(SyncVar, int)) {
 	ch.ACID_ID_L.Lock()
@@ -98,10 +98,10 @@ func (ch *ClientHandler) UpdateSyncVarsWithACIDs(ACIDs ...int) (uc int) {
 	}
 	ch.SV_ACID_L.Unlock()
 	if uc > 0 {
-		printLogF("#####Server: Updating %v SyncVars, initiated by self=%s", uc, ch.Conn.LocalAddr().String())
+		printLogF("#####Server: Updating %v SyncVars, on conn %p\n", uc, ch.Conn)
 	}
 	if len(var_data) > 1 {
-		ch.Server.Send(var_data, ch.Server.ConnToIdx[ch.Conn])
+		ch.Server.Send(var_data, ch.Conn)
 	}
 	return
 }
@@ -120,10 +120,10 @@ func (ch *ClientHandler) UpdateSyncVars() (uc int) {
 	}
 	ch.SV_ID_L.Unlock()
 	if uc > 0 {
-		printLogF("#####Server: Updating %v SyncVars, initiated by self=%s", uc, ch.Conn.LocalAddr().String())
+		printLogF("#####Server: Updating %v SyncVars, on conn %p\n", uc, ch.Conn)
 	}
 	if len(var_data) > 1 {
-		ch.Server.Send(var_data, ch.Server.ConnToIdx[ch.Conn])
+		ch.Server.Send(var_data, ch.Conn)
 	}
 	return 
 }
@@ -131,7 +131,7 @@ func (ch *ClientHandler) DeleteSyncVar(ACID int) {
 	ch.ACID_ID_L.Lock()
 	id := ch.ACIDToID[ACID]
 	ch.ACID_ID_L.Unlock()
-	printLogF("#####Server: Deleting SyncVar with ID=%v, ACID='%v', initiated by self=%s", id, ACID, ch.Conn.LocalAddr().String())
+	printLogF("#####Server: Deleting SyncVar with ID=%v, ACID='%v', on conn %p\n", id, ACID, ch.Conn)
 	ch.deleteSyncVarLocal(ACID, id)
 	ch.deleteSyncVarRemote(ACID, id)
 }
@@ -148,7 +148,7 @@ func (ch *ClientHandler) deleteSyncVarLocal(ACID int, id int) {
 }
 func (ch *ClientHandler) deleteSyncVarRemote(ACID int, id int) {
 	data := append(cmp.Int16ToBytes(int16(id)), cmp.Int16ToBytes(int16(ACID))...)
-	ch.Server.Send(append([]byte{SYNCVAR_DELETION}, data...), ch.Server.ConnToIdx[ch.Conn])
+	ch.Server.Send(append([]byte{SYNCVAR_DELETION}, data...), ch.Conn)
 }
 func (ch *ClientHandler) onSyncVarUpdateC(data []byte) {
 	num := 0
@@ -172,7 +172,7 @@ func (ch *ClientHandler) onSyncVarUpdateC(data []byte) {
 		}
 		//printLogF("#####Server: Updating SyncVar with ID=%v: len(dat)=%v, initiated by client=%s", id, l, ch.Conn.RemoteAddr().String())
 	}
-	printLogF("#####Server: Updating %v SyncVars, initiated by client=%s", num, ch.Conn.RemoteAddr().String())
+	printLogF("#####Server: Updating %v SyncVars, from conn %p\n", num, ch.Conn)
 }
 func (ch *ClientHandler) processSyncVarRegistry(data []byte) {
 	t := data[0]
@@ -188,9 +188,9 @@ func (ch *ClientHandler) processSyncVarRegistry(data []byte) {
 	ch.ACIDToID[ACID] = id
 	ch.ACID_ID_L.Unlock()
 	resp := append(append([]byte{SYNCVAR_REGISTRY_CONFIRMATION}, data[1:3]...), cmp.Int16ToBytes(int16(id))...)
-	ch.Server.Send(resp, ch.Server.ConnToIdx[ch.Conn])
+	ch.Server.Send(resp, ch.Conn)
 	ch.idCounter ++
-	printLogF("#####Server: Creating SyncVar with ID=%v, ACID='%v' , initiated by client=%s", id, ACID, ch.Conn.RemoteAddr().String())
+	printLogF("#####Server: Creating SyncVar with ID=%v, ACID='%v', from conn %p\n", id, ACID, ch.Conn)
 }
 
 func GetServerManager(s *Server) (sm *ServerManager) {
@@ -223,7 +223,7 @@ func (m *ServerManager) RegisterSyncVars(svs map[int]SyncVar, clients ...*ws.Con
 	}
 	for _,c := range(clients) {
 		m.Handler[c].RegisterSyncVars(svs)
-		m.Server.WaitForConfirmation(m.Server.ConnToIdx[c])
+		m.Server.WaitForConfirmation(c)
 		if m.StandardOnChange != nil {
 			for ACID,_ := range(svs) {
 				m.Handler[c].RegisterOnChangeFunc(ACID, m.StandardOnChange)
@@ -235,7 +235,7 @@ func (m *ServerManager) RegisterSyncVar(sv SyncVar, ACID int, clients ...*ws.Con
 	sv.IsRegisteredTo(len(clients))
 	for _,c := range(clients) {
 		m.Handler[c].RegisterSyncVar(sv, ACID)
-		m.Server.WaitForConfirmation(m.Server.ConnToIdx[c])
+		m.Server.WaitForConfirmation(c)
 		if m.StandardOnChange != nil {
 			m.Handler[c].RegisterOnChangeFunc(ACID, m.StandardOnChange)
 		}
@@ -285,7 +285,7 @@ func (m *ServerManager) receive(c *ws.Conn, mt int, msg []byte, err error, s *Se
 		id := int(cmp.BytesToInt16(msg[1:3]))
 		ACID := int(cmp.BytesToInt16(msg[3:5]))
 		m.Handler[c].deleteSyncVarLocal(ACID, id)
-		printLogF("#####Server: Deleting SyncVar with ID=%v, ACID='%v' , initiated by client=%s", id, ACID, c.RemoteAddr().String())
+		printLogF("#####Server: Deleting SyncVar with ID=%v, ACID='%v', from conn %p\n", id, ACID, c)
 	}
 	if m.InputHandler != nil {
 		go m.InputHandler(c,mt,msg,err,s)
