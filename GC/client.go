@@ -10,7 +10,7 @@ import (
 )
 
 func GetNewClient() (cl *Client) {
-	cl = &Client{confirmed:make(chan bool)}
+	cl = &Client{confirmed:make(chan bool), sendTimes:make([]time.Time, 0), Ping:time.Duration(0)}
 	return
 }
 type Client struct {
@@ -21,6 +21,8 @@ type Client struct {
 	sendMessage   []byte
 	confirmed	  chan bool
 	pendingConfirms int
+	sendTimes []time.Time
+	Ping time.Duration
 	
 	topLevelLock, lowLevelLock, readLock, confirmLock sync.Mutex
 }
@@ -30,6 +32,7 @@ func (c *Client) GetPendingConfirms() int {
 func (c *Client) Send(bs []byte) {
 	c.topLevelLock.Lock()
 	c.pendingConfirms ++
+	c.sendTimes = append(c.sendTimes, time.Now())
 	c.sendMessage = bs
 	close(c.waiting)
 }
@@ -38,6 +41,10 @@ func (c *Client) WaitForConfirmation() {
 	for c.pendingConfirms > 0 {
 		<-c.confirmed
 		c.pendingConfirms --
+		if len(c.sendTimes) > 0 {
+			c.Ping = time.Now().Sub(c.sendTimes[0])
+			c.sendTimes = c.sendTimes[1:]
+		}
 	}
 	c.confirmLock.Unlock()
 	return
