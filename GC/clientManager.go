@@ -36,12 +36,22 @@ SyncVar Delete -> 					Payload:
 
 func GetClientManager(c *Client) (cm *ClientManager) {
 	cm = &ClientManager{Client:c}
-	cm.SyncvarsByID = 	make(map[int]SyncVar)
-	cm.SyncvarsByACID = make(map[int]SyncVar)
-	cm.ACIDToID	=		make(map[int]int)
-	cm.SyncVarOnChange = make(map[int]func(SyncVar, int))
-	c.InputHandler = 	cm.receive
+	cm.reset()
 	return
+}
+func (m *ClientManager) reset() {
+	m.SyncvarsByID = 	make(map[int]SyncVar)
+	m.SyncvarsByACID =  make(map[int]SyncVar)
+	m.ACIDToID	=		make(map[int]int)
+	m.SyncVarOnChange = make(map[int]func(SyncVar, int))
+	m.Client.InputHandler = 	m.receive
+	m.Client.OnCloseConnection = m.ClientConnClose
+}
+func (m *ClientManager) ClientConnClose() {
+	m.reset()
+	if m.OnCloseConnection != nil {
+		m.OnCloseConnection()
+	}
 }
 type ClientManager struct {
 	Client			*Client
@@ -53,7 +63,7 @@ type ClientManager struct {
 	SV_ID_L, SV_ACID_L, ACID_ID_L, SV_chng sync.Mutex
 	
 	InputHandler  func(mt int, msg []byte, err error, c *Client) (alive bool)
-	
+	OnCloseConnection func()
 	//SV_ID, SV_ACID, ACID_ID, Chng sync.Mutex
 }
 func (m *ClientManager) RegisterSyncVar(sv SyncVar, ACID int) {
@@ -170,10 +180,9 @@ func (m *ClientManager) deleteSyncVarRemote(ACID int, id int) {
 	data := append(cmp.Int16ToBytes(int16(id)), cmp.Int16ToBytes(int16(ACID))...)
 	m.Client.Send(append([]byte{SYNCVAR_DELETION}, data...))
 }
-func (m *ClientManager) receive(mt int, input []byte, err error, c *Client) bool {
-	if err != nil {
-		return false
-	}
+func (m *ClientManager) receive(mt int, input []byte, err error, c *Client) (alive bool) {
+	alive = true
+	if err != nil {alive = false}
 	if input[0] == SYNCVAR_REGISTRY_CONFIRMATION {
 		m.processRegisterVarConfirm(input[1:])
 	}else if input[0] == SYNCVAR_M_REGISTRY_CONFIRMATION {
@@ -221,7 +230,7 @@ func (m *ClientManager) receive(mt int, input []byte, err error, c *Client) bool
 	if m.InputHandler != nil {
 		return m.InputHandler(mt, input, err, c)
 	}
-	return true
+	return
 }
 func (m *ClientManager) processRegisterVarConfirm(data []byte) {
 	ACID := int(cmp.BytesToInt16(data[0:2]))

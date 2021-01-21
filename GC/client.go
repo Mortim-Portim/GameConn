@@ -10,14 +10,23 @@ import (
 )
 
 func GetNewClient() (cl *Client) {
-	cl = &Client{confirmed:make(chan bool), sendTimes:make([]time.Time, 0), Ping:time.Duration(0)}
+	cl = &Client{}
+	cl.reset()
 	return
+}
+func (c *Client) reset() {
+	c.confirmed = make(chan bool)
+	c.sendTimes = make([]time.Time, 0)
+	c.Ping = time.Duration(0)
+	c.sendMessage = make([]byte, 0)
+	c.pendingConfirms = 0
 }
 type Client struct {
 	ws.Conn
 	done, waiting chan struct{}
 	interrupt     chan os.Signal
 	InputHandler  func(mt int, msg []byte, err error, c *Client) (alive bool)
+	OnCloseConnection func()
 	sendMessage   []byte
 	confirmed	  chan bool
 	pendingConfirms int
@@ -66,16 +75,6 @@ func (c *Client) MakeConn(addr string) error {
 	}
 	c.Conn = *c_tmp
 	
-//	c.Conn.SetPingHandler(func(appData string) error {
-//		log.Println("Client Ping")
-//		err := c.WriteControl(ws.PongMessage, []byte(appData), time.Now().Add(time.Second))
-//		if err == ws.ErrCloseSent {
-//			return nil
-//		} else if e, ok := err.(net.Error); ok && e.Temporary() {
-//			return nil
-//		}
-//		return err
-//	})
 	c.Conn.SetPongHandler(func(appData string) error {
 		if c.confirmed != nil {
 			c.confirmed <- true
@@ -87,24 +86,24 @@ func (c *Client) MakeConn(addr string) error {
 	//receive input in a separate thread
 	c.done = make(chan struct{})
 	go func() {
-		defer close(c.done)
 		for {
 			if c != nil {
 				c.readLock.Lock()
 				mt, msg, err := c.ReadMessage()
 				c.readLock.Unlock()
+				if err != nil || mt == ws.CloseMessage {break}
 				if mt == ws.BinaryMessage {
-					if err != nil {return}
-					if c.InputHandler != nil && !c.InputHandler(mt, msg, err, c) {return}
+					if c.InputHandler != nil && !c.InputHandler(mt, msg, err, c) {break}
 					c.lowLevelLock.Lock()
 					err2 := c.WriteMessage(ws.PongMessage, []byte{})
 					if err2 != nil {
-						return
+						break
 					}
 					c.lowLevelLock.Unlock()
 				}
 			}
 		}
+		close(c.done)
 	}()
 
 	//Send an initial message
@@ -129,6 +128,7 @@ func (c *Client) MakeConn(addr string) error {
 					c.lowLevelLock.Lock()
 					err := c.WriteMessage(ws.BinaryMessage, c.sendMessage)
 					if err != nil {
+						c.CloseConn()
 						return
 					}
 					c.lowLevelLock.Unlock()
@@ -150,14 +150,20 @@ func (c *Client) CloseConn() error {
 	c.readLock.Lock()
 	c.lowLevelLock.Lock()
 	c.topLevelLock.Lock()
-	err := c.WriteMessage(ws.BinaryMessage, []byte{CLOSECONNECTION})
-	if err != nil {
-		return err
+	
+	c.WriteMessage(ws.BinaryMessage, []byte{CLOSECONNECTION})
+	if c.OnCloseConnection != nil {
+		c.OnCloseConnection()
 	}
 	time.Sleep(time.Second)
 	c.pendingConfirms = 1
 	if c.confirmed != nil {
 		close(c.confirmed)
 	}
+	c.reset()
+	
+	c.readLock.Unlock()
+	c.lowLevelLock.Unlock()
+	c.topLevelLock.Unlock()
 	return nil
 }
