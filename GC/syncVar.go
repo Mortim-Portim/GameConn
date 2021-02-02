@@ -40,6 +40,7 @@ func InitSyncVarStandardTypes() {
 	RegisteredSyncVarTypes[BYTESYNCED] = func()(SyncVar){return CreateSyncByte(0)}
 	RegisteredSyncVarTypes[BYTECOORDSYNCED] = func()(SyncVar){return CreateSyncByteCoord(0,0)}
 	RegisteredSyncVarTypes[UINT16SYNCED] = func()(SyncVar){return CreateSyncUInt16(0)}
+	RegisteredSyncVarTypes[CHANNELSYNCED] = func()(SyncVar){return CreateSyncChannel()}
 }
 
 func GetSyncVarOfType(t byte) SyncVar {
