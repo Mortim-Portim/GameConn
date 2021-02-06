@@ -3,7 +3,6 @@ package GC
 import (
 	"net"
 	"fmt"
-	"log"
 	"time"
 	"sync"
 	"net/http"
@@ -60,7 +59,7 @@ func (s *Server) Send(bs []byte, c *ws.Conn) {
 	}
 	
 	s.topLevelLock[c].Lock()
-	fmt.Printf("Sending to connection %p\n", c)
+	printLogF("Sending to connection %p\n", c)
 	s.PendingConfirms[c] ++
 	s.dataLock.Lock()
 	s.Data[c] = bs
@@ -72,7 +71,7 @@ func (s *Server) Send(bs []byte, c *ws.Conn) {
 }
 func (s *Server) WaitForConfirmation(c *ws.Conn) {
 	if s.isConnClosed(c) {
-		fmt.Printf("Conn %p is closing, not waiting\n", c)
+		printLogF("Conn %p is closing, not waiting\n", c)
 		return
 	}
 	
@@ -82,11 +81,11 @@ func (s *Server) WaitForConfirmation(c *ws.Conn) {
 	}
 	if ch, ok := s.Confirms[c]; ok {
 		for s.PendingConfirms[c] > 0 {
-			fmt.Printf("Waiting for %v confirmations on %p\n", s.PendingConfirms[c], c)
+			printLogF("Waiting for %v confirmations on %p\n", s.PendingConfirms[c], c)
 			<-ch
 			s.PendingConfirms[c] --
 		}
-		fmt.Printf("Waiting finished on %p\n", c)
+		printLogF("Waiting finished on %p\n", c)
 	}
 	if lock != nil {
 		lock.Unlock()
@@ -136,7 +135,7 @@ func (s *Server) home(w http.ResponseWriter, r *http.Request) {
 	
 	c.SetPongHandler(func(appData string) error {
 		if _, ok := s.Confirms[c]; ok {
-			fmt.Printf("Confirming for %p\n", c)
+			printLogF("Confirming for %p\n", c)
 			s.Confirms[c] <- true
 		}
 		return nil
@@ -175,7 +174,7 @@ func (s *Server) home(w http.ResponseWriter, r *http.Request) {
 	for {
 		mt, msg, err := c.ReadMessage()
 		if err != nil {
-			log.Printf("Error %p disconnects: %v, msg: %v, mt: %v\n", c, err, msg, mt)
+			printLogF("Error %p disconnects: %v, msg: %v, mt: %v\n", c, err, msg, mt)
 			s.closeConn(c)
 			if s.OnCloseConn != nil {
 				s.OnCloseConn(c, mt, msg, err, s)
@@ -207,19 +206,19 @@ func (s *Server) home(w http.ResponseWriter, r *http.Request) {
 }
 func (s *Server) closeConn(c *ws.Conn) {
 	s.Closing = append(s.Closing, c)
-	fmt.Printf("Closing connection to %p\n", c)
+	printLogF("Closing connection to %p\n", c)
 	time.Sleep(time.Millisecond)
 	
-	fmt.Printf("Locking top level for %p\n", c)
+	printLogF("Locking top level for %p\n", c)
 	s.topLevelLock[c].Lock()
 	//s.confirmLocks[c].Lock()
-	fmt.Printf("Releasing pending confirms for %p\n", c)
+	printLogF("Releasing pending confirms for %p\n", c)
 	s.PendingConfirms[c] = 1
 	if _, ok := s.Confirms[c]; ok {
 		close(s.Confirms[c])
 	}
 	
-	fmt.Printf("Deleting map entries for %p\n", c)
+	printLogF("Deleting map entries for %p\n", c)
 	delete(s.topLevelLock, c)
 	delete(s.confirmLocks, c)
 	delete(s.Connections, c)
@@ -229,10 +228,10 @@ func (s *Server) closeConn(c *ws.Conn) {
 	delete(s.Confirms, c)
 	delete(s.PendingConfirms, c)
 	
-	fmt.Printf("Removing %p from Allconnections: %v\n",c, s.AllConnections)
+	printLogF("Removing %p from Allconnections: %v\n",c, s.AllConnections)
 	s.AllConnections = removeC(s.AllConnections, c)
 	s.connCounter --
-	fmt.Printf("Finished Closing Connection %p: AllConnections: %v, counter: %v\n", c, s.AllConnections, s.connCounter)
+	printLogF("Finished Closing Connection %p: AllConnections: %v, counter: %v\n", c, s.AllConnections, s.connCounter)
 }
 func GetLocalIP() string {
 	addrs, err := net.InterfaceAddrs()
