@@ -14,7 +14,7 @@ TODO is multiple useres connect at the same time
 User disappear
 **/
 
-const ARTIFICIAL_CLIENT_PING = 0//time.Millisecond*50
+const ARTIFICIAL_CLIENT_PING = time.Millisecond*300
 const ARTIFICIAL_SERVER_PING = 0//time.Millisecond*50
 
 type Server struct {
@@ -29,6 +29,7 @@ type Server struct {
 	Confirms	map[*ws.Conn]chan bool
 	PendingConfirms map[*ws.Conn]int
 	connCounter int
+	pendingConfirmsLock sync.Mutex
 
 	upgrader     *ws.Upgrader
 	InputHandler func(c *ws.Conn, mt int, msg []byte, err error, s *Server)
@@ -57,10 +58,11 @@ func (s *Server) Send(bs []byte, c *ws.Conn) {
 	if s.isConnClosed(c) {
 		return
 	}
-	
 	s.topLevelLock[c].Lock()
 	printLogF("Sending to connection %p\n", c)
+	s.pendingConfirmsLock.Lock()
 	s.PendingConfirms[c] ++
+	s.pendingConfirmsLock.Unlock()
 	s.dataLock.Lock()
 	s.Data[c] = bs
 	s.dataLock.Unlock()
@@ -80,11 +82,13 @@ func (s *Server) WaitForConfirmation(c *ws.Conn) {
 		lock.Lock()
 	}
 	if ch, ok := s.Confirms[c]; ok {
+		s.pendingConfirmsLock.Lock()
 		for s.PendingConfirms[c] > 0 {
 			printLogF("Waiting for %v confirmations on %p\n", s.PendingConfirms[c], c)
 			<-ch
 			s.PendingConfirms[c] --
 		}
+		s.pendingConfirmsLock.Unlock()
 		printLogF("Waiting finished on %p\n", c)
 	}
 	if lock != nil {
