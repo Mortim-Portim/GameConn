@@ -14,7 +14,7 @@ TODO is multiple useres connect at the same time
 User disappear
 **/
 
-const ARTIFICIAL_CLIENT_PING = time.Millisecond*300
+const ARTIFICIAL_CLIENT_PING = 0//time.Millisecond*300
 const ARTIFICIAL_SERVER_PING = 0//time.Millisecond*50
 
 type Server struct {
