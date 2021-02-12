@@ -14,8 +14,8 @@ TODO is multiple useres connect at the same time
 User disappear
 **/
 
-const ARTIFICIAL_CLIENT_PING = 0//time.Millisecond*300
-const ARTIFICIAL_SERVER_PING = 0//time.Millisecond*50
+const ARTIFICIAL_CLIENT_PING = 30//time.Millisecond*300
+const ARTIFICIAL_SERVER_PING = 30//time.Millisecond*50
 
 type Server struct {
 	Closing, AllConnections		[]*ws.Conn
