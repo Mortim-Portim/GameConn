@@ -7,6 +7,7 @@ import (
 	"sync"
 	"net/http"
 	ws "github.com/gorilla/websocket"
+	cmp "github.com/mortim-portim/GraphEng/Compression"
 )
 
 /**
@@ -14,8 +15,8 @@ TODO is multiple useres connect at the same time
 User disappear
 **/
 
-const ARTIFICIAL_CLIENT_PING = 30//time.Millisecond*300
-const ARTIFICIAL_SERVER_PING = 30//time.Millisecond*50
+const ARTIFICIAL_CLIENT_PING = 0//time.Millisecond*300
+const ARTIFICIAL_SERVER_PING = 0//time.Millisecond*50
 
 type Server struct {
 	Closing, AllConnections		[]*ws.Conn
@@ -30,6 +31,10 @@ type Server struct {
 	PendingConfirms map[*ws.Conn]int
 	connCounter int
 	pendingConfirmsLock sync.Mutex
+
+	BufferedData map[*ws.Conn]([]byte)
+	ClientsWaiting map[*ws.Conn]bool
+	BufferedDataLock, ClientsWaitingLock sync.Mutex
 
 	upgrader     *ws.Upgrader
 	InputHandler func(c *ws.Conn, mt int, msg []byte, err error, s *Server)
@@ -49,12 +54,46 @@ func GetNewServer() (s *Server) {
 	s.confirmLocks = make(map[*ws.Conn]*sync.Mutex)
 	s.Closing = make([]*ws.Conn, 0)
 	s.AllConnections = make([]*ws.Conn, 0)
+	s.BufferedData = make(map[*ws.Conn]([]byte))
+	s.ClientsWaiting = make(map[*ws.Conn]bool)
 	return
 }
 func (s *Server) isConnClosed(c *ws.Conn) bool {
 	return containsC(s.Closing, c)
 }
+func (s *Server) SendBuffered(bs []byte, c *ws.Conn) {
+	l := cmp.Int16ToBytes(int16(len(bs)))
+	s.BufferedDataLock.Lock()
+	s.BufferedData[c] = append(s.BufferedData[c], l...)
+	s.BufferedData[c] = append(s.BufferedData[c], bs...)
+	s.BufferedDataLock.Unlock()
+	s.pushBuffer(c)
+}
+func (s *Server) pushBuffer(c *ws.Conn) {
+	s.ClientsWaitingLock.Lock()
+	waiting := s.ClientsWaiting[c]
+	s.ClientsWaitingLock.Unlock()
+	if waiting {return}
+	s.ClientsWaitingLock.Lock()
+	s.ClientsWaiting[c] = true
+	s.ClientsWaitingLock.Unlock()
+	s.BufferedDataLock.Lock()
+	Data := s.BufferedData[c]
+	s.BufferedData[c] = []byte{}
+	s.BufferedDataLock.Unlock()
+	s.sendSimple(append([]byte{MULTI_MSG}, Data...), c)
+	
+	go func() {
+		s.WaitForConfirmation(c)
+		s.ClientsWaitingLock.Lock()
+		s.ClientsWaiting[c] = false
+		s.ClientsWaitingLock.Unlock()
+	}()
+}
 func (s *Server) Send(bs []byte, c *ws.Conn) {
+	s.sendSimple(append([]byte{SINGLE_MSG}, bs...), c)
+}
+func (s *Server) sendSimple(bs []byte, c *ws.Conn) {
 	if s.isConnClosed(c) {
 		return
 	}
@@ -149,7 +188,9 @@ func (s *Server) home(w http.ResponseWriter, r *http.Request) {
 	var Locker, lowLevelLock, confirmL sync.Mutex
 	s.confirmLocks[c] = &confirmL
 	s.topLevelLock[c] = &Locker
-	
+	s.ClientsWaitingLock.Lock()
+	s.ClientsWaiting[c] = false
+	s.ClientsWaitingLock.Unlock()
 	s.Connections[c] = make(chan bool)
 	s.Confirms[c] = make(chan bool)
 	s.PendingConfirms[c] = 0

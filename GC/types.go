@@ -36,6 +36,11 @@ const (
 	SYNCVAR_TYPES
 )
 
+const (
+	SINGLE_MSG = byte(iota)
+	MULTI_MSG
+)
+
 func DeleteInt(fast bool, i int, src ...int) (dst []int) {
 	if fast {
 		src[i] = src[len(src)-1] // Copy last element to index i.

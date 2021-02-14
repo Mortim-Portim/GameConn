@@ -106,7 +106,27 @@ func (ch *ClientHandler) UpdateSyncVarsWithACIDs(ACIDs ...int) (uc int) {
 	return
 }
 func (ch *ClientHandler) UpdateSyncVars() (uc int) {
-	var_data := []byte{SYNCVAR_UPDATE}
+	var_data, count := ch.updateSyncVarsAndReturnData(); uc = count
+	if uc > 0 {
+		printLogF("#####Server: Updating %v SyncVars, on conn %p\n", uc, ch.Conn)
+	}
+	if len(var_data) > 1 {
+		ch.Server.Send(var_data, ch.Conn)
+	}
+	return 
+}
+func (ch *ClientHandler) UpdateSyncVarsBuffered() (uc int) {
+	var_data, count := ch.updateSyncVarsAndReturnData(); uc = count
+	if uc > 0 {
+		printLogF("#####Server: Updating %v SyncVars, on conn %p\n", uc, ch.Conn)
+	}
+	if len(var_data) > 1 {
+		ch.Server.SendBuffered(var_data, ch.Conn)
+	}
+	return
+}
+func (ch *ClientHandler) updateSyncVarsAndReturnData() (var_data []byte, uc int) {
+	var_data = []byte{SYNCVAR_UPDATE}
 	ch.SV_ID_L.Lock()
 	for id,sv := range(ch.SyncvarsByID) {
 		if sv.IsDirty() {
@@ -119,13 +139,7 @@ func (ch *ClientHandler) UpdateSyncVars() (uc int) {
 		}
 	}
 	ch.SV_ID_L.Unlock()
-	if uc > 0 {
-		printLogF("#####Server: Updating %v SyncVars, on conn %p\n", uc, ch.Conn)
-	}
-	if len(var_data) > 1 {
-		ch.Server.Send(var_data, ch.Conn)
-	}
-	return 
+	return
 }
 func (ch *ClientHandler) DeleteSyncVar(ACID int) {
 	ch.ACID_ID_L.Lock()
@@ -258,6 +272,11 @@ func (m *ServerManager) RegisterOnChangeFuncToAllClients(ACID int, fnc func(Sync
 func (m *ServerManager) UpdateSyncVars() {
 	for _,h := range(m.Handler) {
 		h.UpdateSyncVars()
+	}
+}
+func (m *ServerManager) UpdateSyncVarsBuffered() {
+	for _,h := range(m.Handler) {
+		h.UpdateSyncVarsBuffered()
 	}
 }
 func (m *ServerManager) DeleteSyncVar(ACID int, clients ...*ws.Conn) {

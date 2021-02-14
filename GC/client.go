@@ -7,6 +7,7 @@ import (
 	"time"
 	"sync"
 	ws "github.com/gorilla/websocket"
+	cmp "github.com/mortim-portim/GraphEng/Compression"
 )
 
 func GetNewClient() (cl *Client) {
@@ -86,21 +87,33 @@ func (c *Client) MakeConn(addr string) error {
 	//receive input in a separate thread
 	c.done = make(chan struct{})
 	go func() {
-		for {
-			if c != nil {
-				c.readLock.Lock()
-				mt, msg, err := c.ReadMessage()
-				c.readLock.Unlock()
-				if err != nil || mt == ws.CloseMessage {break}
-				if mt == ws.BinaryMessage {
+		for c != nil {
+			c.readLock.Lock()
+			mt, msg, err := c.ReadMessage()
+			c.readLock.Unlock()
+			if err != nil || mt == ws.CloseMessage {break}
+			if mt == ws.BinaryMessage {
+				RealMsgType := msg[0];msg := msg[1:]
+				if RealMsgType == SINGLE_MSG {
 					if c.InputHandler != nil && !c.InputHandler(mt, msg, err, c) {break}
-					c.lowLevelLock.Lock()
-					err2 := c.WriteMessage(ws.PongMessage, []byte{})
-					if err2 != nil {
-						break
+				}else if RealMsgType == MULTI_MSG {
+					continuing := false
+					for len(msg) > 1 {
+						l := int(cmp.BytesToInt16(msg[0:2]))
+						data := msg[2:2+l]
+						msg = msg[l+2:]
+						if c.InputHandler != nil {
+							continuing = c.InputHandler(mt, data, err, c)
+						}
 					}
-					c.lowLevelLock.Unlock()
+					if !continuing {break}
 				}
+				c.lowLevelLock.Lock()
+				err2 := c.WriteMessage(ws.PongMessage, []byte{})
+				if err2 != nil {
+					break
+				}
+				c.lowLevelLock.Unlock()
 			}
 		}
 		close(c.done)
