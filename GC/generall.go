@@ -5,10 +5,10 @@ import (
 	ws "github.com/gorilla/websocket"
 )
 
-var PRINT_LOG = true
+var PRINT_LOG_PRIORITY = 0
 
-func printLogF(str string, is ...interface{}) {
-	if PRINT_LOG {
+func printLogF(prio int, str string, is ...interface{}) {
+	if prio > PRINT_LOG_PRIORITY {
 		log.Printf(str, is...)
 	}
 }

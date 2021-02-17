@@ -7,12 +7,17 @@ import (
 )
 
 type Handler interface {
-	RegisterSyncVar(sv SyncVar, ACID int)
-	RegisterSyncVars(svs map[int]SyncVar)
+	RegisterSyncVarNormal(sv SyncVar, ACID int)
+	RegisterSyncVarBuffered(sv SyncVar, ACID int)
+	RegisterSyncVarsNormal(svs map[int]SyncVar)
+	RegisterSyncVarsBuffered(svs map[int]SyncVar)
+	UpdateSyncVarsWithACIDsNormal(...int) int
+	UpdateSyncVarsWithACIDsBuffered(...int) int
+	UpdateSyncVarsNormal() int
+	UpdateSyncVarsBuffered() int
+	DeleteSyncVarNormal(ACID int)
+	DeleteSyncVarBuffered(ACID int)
 	RegisterOnChangeFunc(ACID int, fnc func(SyncVar, int))
-	UpdateSyncVarsWithACIDs(...int) int
-	UpdateSyncVars() int
-	DeleteSyncVar(ACID int)
 }
 
 func GetNewClientHandler(s *Server, cn *ws.Conn) (ch *ClientHandler) {
@@ -34,8 +39,17 @@ type ClientHandler struct {
 	SV_ID_L, SV_ACID_L, ACID_ID_L, SV_chng sync.Mutex
 	idCounter int
 }
-func (ch *ClientHandler) RegisterSyncVar(sv SyncVar, ACID int) {
-	printLogF("#####Server: Creating SyncVar with ID=%v, ACID='%v', type=%v , on conn %p\n", ch.idCounter, ACID, sv.Type(), ch.Conn)
+//you may wait for confirmation
+func (ch *ClientHandler) RegisterSyncVarNormal(sv SyncVar, ACID int) {
+	ch.Server.SendNormal(ch.registerSyncVar(sv, ACID), ch.Conn)
+	ch.idCounter ++
+}
+func (ch *ClientHandler) RegisterSyncVarBuffered(sv SyncVar, ACID int) {
+	ch.Server.SendBuffered(ch.registerSyncVar(sv, ACID), ch.Conn)
+	ch.idCounter ++
+}
+func (ch *ClientHandler) registerSyncVar(sv SyncVar, ACID int) []byte {
+	printLogF(3, "#####Server: Creating SyncVar with ID=%v, ACID='%v', type=%v , on conn %p\n", ch.idCounter, ACID, sv.Type(), ch.Conn)
 	ch.SV_ACID_L.Lock()
 	ch.SyncvarsByACID[ACID] 		= sv
 	ch.SV_ACID_L.Unlock()
@@ -45,11 +59,16 @@ func (ch *ClientHandler) RegisterSyncVar(sv SyncVar, ACID int) {
 	ch.ACID_ID_L.Lock()
 	ch.ACIDToID[ACID] 				= ch.idCounter
 	ch.ACID_ID_L.Unlock()
-	resp := append(append([]byte{SYNCVAR_REGISTRY, sv.Type()}, cmp.Int16ToBytes(int16(ACID))...), cmp.Int16ToBytes(int16(ch.idCounter))...)
-	ch.Server.Send(resp, ch.Conn)
-	ch.idCounter ++
+	return append(append([]byte{SYNCVAR_REGISTRY, sv.Type()}, cmp.Int16ToBytes(int16(ACID))...), cmp.Int16ToBytes(int16(ch.idCounter))...)
 }
-func (ch *ClientHandler) RegisterSyncVars(svs map[int]SyncVar) {
+//you may wait for confirmation
+func (ch *ClientHandler) RegisterSyncVarsNormal(svs map[int]SyncVar) {
+	ch.Server.SendNormal(ch.registerSyncVars(svs), ch.Conn)
+}
+func (ch *ClientHandler) RegisterSyncVarsBuffered(svs map[int]SyncVar) {
+	ch.Server.SendBuffered(ch.registerSyncVars(svs), ch.Conn)
+}
+func (ch *ClientHandler) registerSyncVars(svs map[int]SyncVar) []byte {
 	data := []byte{SYNCVAR_M_REGISTRY}
 	for ACID,sv := range(svs) {
 		//printLogF("#####Server: MCreating SyncVar with ID=%v, ACID='%v', type=%v , initiated by self=%s", ch.idCounter, ACID, sv.Type(), ch.Conn.LocalAddr().String())
@@ -67,8 +86,8 @@ func (ch *ClientHandler) RegisterSyncVars(svs map[int]SyncVar) {
 		data = append(data, cmp.Int16ToBytes(int16(ch.idCounter))...)
 		ch.idCounter ++
 	}
-	printLogF("#####Server: MCreating %v SyncVars, on conn %p\n", len(svs), ch.Conn)
-	ch.Server.Send(data, ch.Conn)
+	printLogF(3, "#####Server: MCreating %v SyncVars, on conn %p\n", len(svs), ch.Conn)
+	return data
 }
 func (ch *ClientHandler) RegisterOnChangeFunc(ACID int, fnc func(SyncVar, int)) {
 	ch.ACID_ID_L.Lock()
@@ -80,56 +99,72 @@ func (ch *ClientHandler) RegisterOnChangeFunc(ACID int, fnc func(SyncVar, int)) 
 		ch.SV_chng.Unlock()
 	}
 }
-func (ch *ClientHandler) UpdateSyncVarsWithACIDs(ACIDs ...int) (uc int) {
-	var_data := []byte{SYNCVAR_UPDATE}
-	ch.SV_ACID_L.Lock()
-	for ACID,sv := range(ch.SyncvarsByACID) {
-		if sv.IsDirty() && containsI(ACIDs, ACID) {
-			uc ++
-			syncDat := sv.GetData()
-			//printLogF(".....Client: Updating SyncVar with ID=%v: len(dat)=%v, initiated by self=%s", id, len(syncDat), m.Client.LocalAddr().String())
-			data := append(cmp.Int16ToBytes(int16(len(syncDat))), syncDat...)
-			ch.ACID_ID_L.Lock()
-			id := int16(ch.ACIDToID[ACID])
-			ch.ACID_ID_L.Unlock()
-			payload := append(cmp.Int16ToBytes(id), data...)
-			var_data = append(var_data, payload...)
-		}
-	}
-	ch.SV_ACID_L.Unlock()
+//you may wait for confirmation
+func (ch *ClientHandler) UpdateSyncVarsWithACIDsNormal(ACIDs ...int) (uc int) {
+	var_data, count := ch.updateSyncVarsByACIDAndReturnData(false, ACIDs...); uc = count
 	if uc > 0 {
-		printLogF("#####Server: Updating %v SyncVars, on conn %p\n", uc, ch.Conn)
+		printLogF(2, "#####Server: Updating %v SyncVars, on conn %p\n", uc, ch.Conn)
 	}
 	if len(var_data) > 1 {
-		ch.Server.Send(var_data, ch.Conn)
+		ch.Server.SendNormal(var_data, ch.Conn)
 	}
 	return
 }
-func (ch *ClientHandler) UpdateSyncVars() (uc int) {
-	var_data, count := ch.updateSyncVarsAndReturnData(); uc = count
+func (ch *ClientHandler) UpdateSyncVarsWithACIDsBuffered(ACIDs ...int) (uc int) {
+	var_data, count := ch.updateSyncVarsByACIDAndReturnData(false, ACIDs...); uc = count
 	if uc > 0 {
-		printLogF("#####Server: Updating %v SyncVars, on conn %p\n", uc, ch.Conn)
-	}
-	if len(var_data) > 1 {
-		ch.Server.Send(var_data, ch.Conn)
-	}
-	return 
-}
-func (ch *ClientHandler) UpdateSyncVarsBuffered() (uc int) {
-	var_data, count := ch.updateSyncVarsAndReturnData(); uc = count
-	if uc > 0 {
-		printLogF("#####Server: Updating %v SyncVars, on conn %p\n", uc, ch.Conn)
+		printLogF(2, "#####Server: Updating %v SyncVars, on conn %p\n", uc, ch.Conn)
 	}
 	if len(var_data) > 1 {
 		ch.Server.SendBuffered(var_data, ch.Conn)
 	}
 	return
 }
-func (ch *ClientHandler) updateSyncVarsAndReturnData() (var_data []byte, uc int) {
+//you may wait for confirmation
+func (ch *ClientHandler) UpdateSyncVarsNormal() (uc int) {
+	var_data, count := ch.updateSyncVarsByIDAndReturnData(true); uc = count
+	if uc > 0 {
+		printLogF(2, "#####Server: Updating %v SyncVars, on conn %p\n", uc, ch.Conn)
+	}
+	if len(var_data) > 1 {
+		ch.Server.SendNormal(var_data, ch.Conn)
+	}
+	return 
+}
+func (ch *ClientHandler) UpdateSyncVarsBuffered() (uc int) {
+	var_data, count := ch.updateSyncVarsByIDAndReturnData(true); uc = count
+	if uc > 0 {
+		printLogF(2, "#####Server: Updating %v SyncVars, on conn %p\n", uc, ch.Conn)
+	}
+	if len(var_data) > 1 {
+		ch.Server.SendBuffered(var_data, ch.Conn)
+	}
+	return
+}
+func (ch *ClientHandler) updateSyncVarsByACIDAndReturnData(all bool, ACIDs ...int) (var_data []byte, uc int) {
+	var_data = []byte{SYNCVAR_UPDATE}
+	ch.SV_ACID_L.Lock()
+	for ACID,sv := range(ch.SyncvarsByACID) {
+		if sv.IsDirty() && (all || containsI(ACIDs, ACID)) {
+			uc ++
+			syncDat := sv.GetData()
+			data := append(cmp.Int16ToBytes(int16(len(syncDat))), syncDat...)
+			ch.ACID_ID_L.Lock()
+			id := int16(ch.ACIDToID[ACID])
+			ch.ACID_ID_L.Unlock()
+			payload := append(cmp.Int16ToBytes(int16(id)), data...)
+			var_data = append(var_data, payload...)
+			//printLogF("#####Server: Updating SyncVar with ID=%v: len(dat)=%v, initiated by self=%s", id, len(syncDat), ch.Conn.LocalAddr().String())
+		}
+	}
+	ch.SV_ACID_L.Unlock()
+	return
+}
+func (ch *ClientHandler) updateSyncVarsByIDAndReturnData(all bool, IDs ...int) (var_data []byte, uc int) {
 	var_data = []byte{SYNCVAR_UPDATE}
 	ch.SV_ID_L.Lock()
 	for id,sv := range(ch.SyncvarsByID) {
-		if sv.IsDirty() {
+		if sv.IsDirty() && (all || containsI(IDs, id)) {
 			uc ++
 			syncDat := sv.GetData()
 			data := append(cmp.Int16ToBytes(int16(len(syncDat))), syncDat...)
@@ -141,13 +176,22 @@ func (ch *ClientHandler) updateSyncVarsAndReturnData() (var_data []byte, uc int)
 	ch.SV_ID_L.Unlock()
 	return
 }
-func (ch *ClientHandler) DeleteSyncVar(ACID int) {
+//you may wait for confirmation
+func (ch *ClientHandler) DeleteSyncVarNormal(ACID int) {
 	ch.ACID_ID_L.Lock()
 	id := ch.ACIDToID[ACID]
 	ch.ACID_ID_L.Unlock()
-	printLogF("#####Server: Deleting SyncVar with ID=%v, ACID='%v', on conn %p\n", id, ACID, ch.Conn)
+	printLogF(3, "#####Server: Deleting SyncVar with ID=%v, ACID='%v', on conn %p\n", id, ACID, ch.Conn)
 	ch.deleteSyncVarLocal(ACID, id)
-	ch.deleteSyncVarRemote(ACID, id)
+	ch.deleteSyncVarRemoteNormal(ACID, id)
+}
+func (ch *ClientHandler) DeleteSyncVarBuffered(ACID int) {
+	ch.ACID_ID_L.Lock()
+	id := ch.ACIDToID[ACID]
+	ch.ACID_ID_L.Unlock()
+	printLogF(3, "#####Server: Deleting SyncVar with ID=%v, ACID='%v', on conn %p\n", id, ACID, ch.Conn)
+	ch.deleteSyncVarLocal(ACID, id)
+	ch.deleteSyncVarRemoteBuffered(ACID, id)
 }
 func (ch *ClientHandler) deleteSyncVarLocal(ACID int, id int) {
 	ch.SV_ID_L.Lock()
@@ -160,9 +204,13 @@ func (ch *ClientHandler) deleteSyncVarLocal(ACID int, id int) {
 	delete(ch.ACIDToID, ACID)
 	ch.ACID_ID_L.Unlock()
 }
-func (ch *ClientHandler) deleteSyncVarRemote(ACID int, id int) {
+func (ch *ClientHandler) deleteSyncVarRemoteBuffered(ACID int, id int) {
 	data := append(cmp.Int16ToBytes(int16(id)), cmp.Int16ToBytes(int16(ACID))...)
-	ch.Server.Send(append([]byte{SYNCVAR_DELETION}, data...), ch.Conn)
+	ch.Server.SendBuffered(append([]byte{SYNCVAR_DELETION}, data...), ch.Conn)
+}
+func (ch *ClientHandler) deleteSyncVarRemoteNormal(ACID int, id int) {
+	data := append(cmp.Int16ToBytes(int16(id)), cmp.Int16ToBytes(int16(ACID))...)
+	ch.Server.SendNormal(append([]byte{SYNCVAR_DELETION}, data...), ch.Conn)
 }
 func (ch *ClientHandler) onSyncVarUpdateC(data []byte) {
 	num := 0
@@ -186,7 +234,7 @@ func (ch *ClientHandler) onSyncVarUpdateC(data []byte) {
 		}
 		//printLogF("#####Server: Updating SyncVar with ID=%v: len(dat)=%v, initiated by client=%s", id, l, ch.Conn.RemoteAddr().String())
 	}
-	printLogF("#####Server: Updating %v SyncVars, from conn %p\n", num, ch.Conn)
+	printLogF(2, "#####Server: Updating %v SyncVars, from conn %p\n", num, ch.Conn)
 }
 func (ch *ClientHandler) processSyncVarRegistry(data []byte) {
 	t := data[0]
@@ -202,9 +250,9 @@ func (ch *ClientHandler) processSyncVarRegistry(data []byte) {
 	ch.ACIDToID[ACID] = id
 	ch.ACID_ID_L.Unlock()
 	resp := append(append([]byte{SYNCVAR_REGISTRY_CONFIRMATION}, data[1:3]...), cmp.Int16ToBytes(int16(id))...)
-	ch.Server.Send(resp, ch.Conn)
+	ch.Server.SendBuffered(resp, ch.Conn)
 	ch.idCounter ++
-	printLogF("#####Server: Creating SyncVar with ID=%v, ACID='%v', from conn %p\n", id, ACID, ch.Conn)
+	printLogF(3, "#####Server: Creating SyncVar with ID=%v, ACID='%v', from conn %p\n", id, ACID, ch.Conn)
 }
 
 func GetServerManager(s *Server) (sm *ServerManager) {
@@ -225,19 +273,23 @@ type ServerManager struct {
 	OnNewConn    func(c *ws.Conn, mt int, msg []byte, err error, s *Server)
 	OnCloseConn  func(c *ws.Conn, mt int, msg []byte, err error, s *Server)
 }
-func (m *ServerManager) RegisterSyncVarToAllClients(sv SyncVar, ACID int) {
-	m.RegisterSyncVar(sv, ACID, m.AllClients...)
+func (m *ServerManager) RegisterSyncVarToAllClients(normal bool, sv SyncVar, ACID int) {
+	m.RegisterSyncVar(normal, sv, ACID, m.AllClients...)
 }
-func (m *ServerManager) RegisterSyncVarsToAllClients(svs map[int]SyncVar) {
-	m.RegisterSyncVars(svs, m.AllClients...)
+func (m *ServerManager) RegisterSyncVarsToAllClients(normal bool, svs map[int]SyncVar) {
+	m.RegisterSyncVars(normal, svs, m.AllClients...)
 }
-func (m *ServerManager) RegisterSyncVars(svs map[int]SyncVar, clients ...*ws.Conn) {
+//you may wait for confirmation if normal
+func (m *ServerManager) RegisterSyncVars(normal bool, svs map[int]SyncVar, clients ...*ws.Conn) {
 	for _,sv := range(svs) {
 		sv.IsRegisteredTo(len(clients))
 	}
 	for _,c := range(clients) {
-		m.Handler[c].RegisterSyncVars(svs)
-		m.Server.WaitForConfirmation(c)
+		if normal {
+			m.Handler[c].RegisterSyncVarsNormal(svs)
+		}else{
+			m.Handler[c].RegisterSyncVarsBuffered(svs)
+		}
 		if m.StandardOnChange != nil {
 			for ACID,_ := range(svs) {
 				m.Handler[c].RegisterOnChangeFunc(ACID, m.StandardOnChange)
@@ -245,11 +297,15 @@ func (m *ServerManager) RegisterSyncVars(svs map[int]SyncVar, clients ...*ws.Con
 		}
 	}
 }
-func (m *ServerManager) RegisterSyncVar(sv SyncVar, ACID int, clients ...*ws.Conn) {
+//you may wait for confirmation if normal
+func (m *ServerManager) RegisterSyncVar(normal bool, sv SyncVar, ACID int, clients ...*ws.Conn) {
 	sv.IsRegisteredTo(len(clients))
 	for _,c := range(clients) {
-		m.Handler[c].RegisterSyncVar(sv, ACID)
-		m.Server.WaitForConfirmation(c)
+		if normal {
+			m.Handler[c].RegisterSyncVarNormal(sv, ACID)
+		}else{
+			m.Handler[c].RegisterSyncVarBuffered(sv, ACID)
+		}
 		if m.StandardOnChange != nil {
 			m.Handler[c].RegisterOnChangeFunc(ACID, m.StandardOnChange)
 		}
@@ -269,9 +325,10 @@ func (m *ServerManager) RegisterOnChangeFuncToAllClients(ACID int, fnc func(Sync
 		m.Handler[c].RegisterOnChangeFunc(ACID, fnc)
 	}
 }
-func (m *ServerManager) UpdateSyncVars() {
+//you may wait for confirmation
+func (m *ServerManager) UpdateSyncVarsNormal() {
 	for _,h := range(m.Handler) {
-		h.UpdateSyncVars()
+		h.UpdateSyncVarsNormal()
 	}
 }
 func (m *ServerManager) UpdateSyncVarsBuffered() {
@@ -279,9 +336,15 @@ func (m *ServerManager) UpdateSyncVarsBuffered() {
 		h.UpdateSyncVarsBuffered()
 	}
 }
-func (m *ServerManager) DeleteSyncVar(ACID int, clients ...*ws.Conn) {
+//you may wait for confirmation
+func (m *ServerManager) DeleteSyncVarNormal(ACID int, clients ...*ws.Conn) {
 	for _,c := range(clients) {
-		m.Handler[c].DeleteSyncVar(ACID)
+		m.Handler[c].DeleteSyncVarNormal(ACID)
+	}
+}
+func (m *ServerManager) DeleteSyncVarBuffered(ACID int, clients ...*ws.Conn) {
+	for _,c := range(clients) {
+		m.Handler[c].DeleteSyncVarBuffered(ACID)
 	}
 }
 func (m *ServerManager) GetHandler(id int) *ClientHandler {
@@ -304,10 +367,10 @@ func (m *ServerManager) receive(c *ws.Conn, mt int, msg []byte, err error, s *Se
 		id := int(cmp.BytesToInt16(msg[1:3]))
 		ACID := int(cmp.BytesToInt16(msg[3:5]))
 		m.Handler[c].deleteSyncVarLocal(ACID, id)
-		printLogF("#####Server: Deleting SyncVar with ID=%v, ACID='%v', from conn %p\n", id, ACID, c)
+		printLogF(3, "#####Server: Deleting SyncVar with ID=%v, ACID='%v', from conn %p\n", id, ACID, c)
 	}
 	if m.InputHandler != nil {
-		go m.InputHandler(c,mt,msg,err,s)
+		m.InputHandler(c,mt,msg,err,s)
 	}
 }
 func (m *ServerManager) onNewConn(c *ws.Conn, mt int, msg []byte, err error, s *Server) {

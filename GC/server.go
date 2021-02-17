@@ -15,8 +15,8 @@ TODO is multiple useres connect at the same time
 User disappear
 **/
 
-const ARTIFICIAL_CLIENT_PING = 0//time.Millisecond*30
-const ARTIFICIAL_SERVER_PING = 0//time.Millisecond*30
+const ARTIFICIAL_CLIENT_PING = time.Millisecond*30
+const ARTIFICIAL_SERVER_PING = time.Millisecond*30
 
 type Server struct {
 	Closing, AllConnections		[]*ws.Conn
@@ -35,7 +35,9 @@ type Server struct {
 	BufferedData map[*ws.Conn]([]byte)
 	ClientsWaiting map[*ws.Conn]bool
 	BufferedDataLock, ClientsWaitingLock sync.Mutex
-
+	
+	MsgStack []*message
+	InputWaiting bool
 	upgrader     *ws.Upgrader
 	InputHandler func(c *ws.Conn, mt int, msg []byte, err error, s *Server)
 	OnNewConn    func(c *ws.Conn, mt int, msg []byte, err error, s *Server)
@@ -62,12 +64,15 @@ func (s *Server) isConnClosed(c *ws.Conn) bool {
 	return containsC(s.Closing, c)
 }
 func (s *Server) SendBuffered(bs []byte, c *ws.Conn) {
+	printLogF(1, "Sending Buffered data %v\n", bs)
 	l := cmp.Int16ToBytes(int16(len(bs)))
 	s.BufferedDataLock.Lock()
 	s.BufferedData[c] = append(s.BufferedData[c], l...)
 	s.BufferedData[c] = append(s.BufferedData[c], bs...)
 	s.BufferedDataLock.Unlock()
+	printLogF(1, "Pushing Buffered data %v\n", bs)
 	s.pushBuffer(c)
+	printLogF(1, "Finished Buffered data %v\n", bs)
 }
 func (s *Server) pushBuffer(c *ws.Conn) {
 	s.ClientsWaitingLock.Lock()
@@ -90,7 +95,7 @@ func (s *Server) pushBuffer(c *ws.Conn) {
 		s.ClientsWaitingLock.Unlock()
 	}()
 }
-func (s *Server) Send(bs []byte, c *ws.Conn) {
+func (s *Server) SendNormal(bs []byte, c *ws.Conn) {
 	s.sendSimple(append([]byte{SINGLE_MSG}, bs...), c)
 }
 func (s *Server) sendSimple(bs []byte, c *ws.Conn) {
@@ -98,7 +103,7 @@ func (s *Server) sendSimple(bs []byte, c *ws.Conn) {
 		return
 	}
 	s.topLevelLock[c].Lock()
-	printLogF("Sending to connection %p\n", c)
+	printLogF(3, "Sending msg of len(%v) to connection %p\n", len(bs), c)
 	s.pendingConfirmsLock.Lock()
 	s.PendingConfirms[c] ++
 	s.pendingConfirmsLock.Unlock()
@@ -112,7 +117,7 @@ func (s *Server) sendSimple(bs []byte, c *ws.Conn) {
 }
 func (s *Server) WaitForConfirmation(c *ws.Conn) {
 	if s.isConnClosed(c) {
-		printLogF("Conn %p is closing, not waiting\n", c)
+		printLogF(2,"Conn %p is closing, not waiting\n", c)
 		return
 	}
 	
@@ -123,12 +128,12 @@ func (s *Server) WaitForConfirmation(c *ws.Conn) {
 	if ch, ok := s.Confirms[c]; ok {
 		s.pendingConfirmsLock.Lock()
 		for s.PendingConfirms[c] > 0 {
-			printLogF("Waiting for %v confirmations on %p\n", s.PendingConfirms[c], c)
+			printLogF(1, "Waiting for %v confirmations on %p\n", s.PendingConfirms[c], c)
 			<-ch
 			s.PendingConfirms[c] --
 		}
 		s.pendingConfirmsLock.Unlock()
-		printLogF("Waiting finished on %p\n", c)
+		printLogF(1, "Waiting finished on %p\n", c)
 	}
 	if lock != nil {
 		lock.Unlock()
@@ -146,12 +151,12 @@ func (s *Server) WaitForAllConfirmations() {
 }
 func (s *Server) SendToMultiple(bs []byte, cs ...*ws.Conn) {
 	for _,c := range(cs) {
-		s.Send(bs, c)
+		s.SendBuffered(bs, c)
 	}
 }
 func (s *Server) SendAll(bs []byte) {
 	for _,c := range(s.AllConnections) {
-		s.Send(bs, c)
+		s.SendBuffered(bs, c)
 	}
 }
 
@@ -178,7 +183,7 @@ func (s *Server) home(w http.ResponseWriter, r *http.Request) {
 	
 	c.SetPongHandler(func(appData string) error {
 		if _, ok := s.Confirms[c]; ok {
-			printLogF("Confirming for %p\n", c)
+			printLogF(1, "Confirming for %p\n", c)
 			s.Confirms[c] <- true
 		}
 		return nil
@@ -219,13 +224,15 @@ func (s *Server) home(w http.ResponseWriter, r *http.Request) {
 	for {
 		mt, msg, err := c.ReadMessage()
 		if err != nil {
-			printLogF("Error %p disconnects: %v, msg: %v, mt: %v\n", c, err, msg, mt)
+			printLogF(4, "Error %p disconnects: %v, msg: %v, mt: %v\n", c, err, msg, mt)
 			s.closeConn(c)
 			if s.OnCloseConn != nil {
 				s.OnCloseConn(c, mt, msg, err, s)
 			}
 			break
 		}
+		
+		
 		if msg[0] == NEWCONNECTION {
 			if s.OnNewConn != nil {
 				s.OnNewConn(c, mt, msg[1:], err, s)
@@ -237,8 +244,16 @@ func (s *Server) home(w http.ResponseWriter, r *http.Request) {
 			}
 			return
 		} else {
-			if s.InputHandler != nil {
-				s.InputHandler(c, mt, msg, err, s)
+			RealMsgType := msg[0];msg := msg[1:]
+			if RealMsgType == SINGLE_MSG {
+				s.handleInput(c,mt,msg,err)
+			}else if RealMsgType == MULTI_MSG {
+				for len(msg) > 1 {
+					l := int(cmp.BytesToInt16(msg[0:2]))
+					data := msg[2:2+l]
+					msg = msg[l+2:]
+					s.handleInput(c,mt,data,err)
+				}
 			}
 			lowLevelLock.Lock()
 			err2 := c.WriteMessage(ws.PongMessage, []byte{})
@@ -249,21 +264,46 @@ func (s *Server) home(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 }
+func (s *Server) HandleInput() {
+	for _,M := range s.MsgStack {
+		s.callInputHandler(M.c, M.mt, M.msg, M.err)
+	}
+	s.MsgStack = make([]*message, 0)
+}
+type message struct {
+	c *ws.Conn
+	mt int
+	msg []byte
+	err error
+}
+func (s *Server) handleInput(c *ws.Conn, mt int, msg []byte, err error) {
+	if s.InputWaiting {
+		s.MsgStack = append(s.MsgStack, &message{c,mt,msg,err})
+	}else{
+		s.callInputHandler(c, mt, msg, err)
+	}
+}
+func (s *Server) callInputHandler(c *ws.Conn, mt int, msg []byte, err error) {
+	if s.InputHandler != nil {
+		printLogF(4, "Receiving, mt: %v, msg: %v, err: %v, c: %p\n", mt, msg, err, c)
+		s.InputHandler(c, mt, msg, err, s)
+	}
+}
 func (s *Server) closeConn(c *ws.Conn) {
 	s.Closing = append(s.Closing, c)
-	printLogF("Closing connection to %p\n", c)
+	printLogF(4, "Closing connection to %p\n", c)
 	time.Sleep(time.Millisecond)
 	
-	printLogF("Locking top level for %p\n", c)
+	printLogF(1, "Locking top level for %p\n", c)
 	s.topLevelLock[c].Lock()
 	//s.confirmLocks[c].Lock()
-	printLogF("Releasing pending confirms for %p\n", c)
+	printLogF(1, "Releasing pending confirms for %p\n", c)
 	s.PendingConfirms[c] = 1
 	if _, ok := s.Confirms[c]; ok {
 		close(s.Confirms[c])
 	}
 	
-	printLogF("Deleting map entries for %p\n", c)
+	printLogF(1, "Deleting map entries for %p\n", c)
 	delete(s.topLevelLock, c)
 	delete(s.confirmLocks, c)
 	delete(s.Connections, c)
@@ -273,10 +313,10 @@ func (s *Server) closeConn(c *ws.Conn) {
 	delete(s.Confirms, c)
 	delete(s.PendingConfirms, c)
 	
-	printLogF("Removing %p from Allconnections: %v\n",c, s.AllConnections)
+	printLogF(1, "Removing %p from Allconnections: %v\n",c, s.AllConnections)
 	s.AllConnections = removeC(s.AllConnections, c)
 	s.connCounter --
-	printLogF("Finished Closing Connection %p: AllConnections: %v, counter: %v\n", c, s.AllConnections, s.connCounter)
+	printLogF(4, "Finished Closing Connection %p: AllConnections: %v, counter: %v\n", c, s.AllConnections, s.connCounter)
 }
 func GetLocalIP() string {
 	addrs, err := net.InterfaceAddrs()

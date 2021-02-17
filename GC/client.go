@@ -28,9 +28,13 @@ type Client struct {
 	interrupt     chan os.Signal
 	InputHandler  func(mt int, msg []byte, err error, c *Client) (alive bool)
 	OnCloseConnection func()
-	sendMessage   []byte
+	
+	sendMessage, bufferedData []byte
+	bufferedWaiting bool
+	
 	confirmed	  chan bool
 	pendingConfirms int
+	
 	sendTimes []time.Time
 	Ping time.Duration
 	
@@ -39,7 +43,33 @@ type Client struct {
 func (c *Client) GetPendingConfirms() int {
 	return c.pendingConfirms
 }
-func (c *Client) Send(bs []byte) {
+func (c *Client) SendBuffered(bs []byte) {
+	printLogF(1, "Sending Buffered data %v\n", bs)
+	l := cmp.Int16ToBytes(int16(len(bs)))
+	c.bufferedData = append(c.bufferedData, l...)
+	c.bufferedData = append(c.bufferedData, bs...)
+	printLogF(1, "Pushing Buffered data %v\n", bs)
+	c.pushBuffer()
+	printLogF(1, "Finished Buffered data %v\n", bs)
+}
+func (c *Client) pushBuffer() {
+	if c.bufferedWaiting {return}
+	c.bufferedWaiting = true
+	
+	Data := c.bufferedData
+	c.bufferedData = []byte{}
+	c.sendSimple(append([]byte{MULTI_MSG}, Data...))
+	go func() {
+		c.WaitForConfirmation()
+		c.bufferedWaiting = false
+	}()
+}
+
+func (c *Client) SendNormal(bs []byte) {
+	c.sendSimple(append([]byte{SINGLE_MSG}, bs...))
+}
+func (c *Client) sendSimple(bs []byte) {
+	printLogF(3, "Sending msg of len(%v) to server\n", len(bs))
 	c.topLevelLock.Lock()
 	c.pendingConfirms ++
 	c.sendTimes = append(c.sendTimes, time.Now())

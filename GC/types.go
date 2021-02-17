@@ -19,6 +19,9 @@ const (
 	
 	BINARYMSG
 	
+	SINGLE_MSG
+	MULTI_MSG
+	
 	MESSAGE_TYPES
 )
 
@@ -34,11 +37,6 @@ const (
 	CHANNELSYNCED
 	
 	SYNCVAR_TYPES
-)
-
-const (
-	SINGLE_MSG = byte(iota)
-	MULTI_MSG
 )
 
 func DeleteInt(fast bool, i int, src ...int) (dst []int) {

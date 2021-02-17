@@ -95,17 +95,17 @@ func main() {
 	syncVar3 := GC.CreateSyncString("fünf und dreißig")
 	
 	//Registers a syncvar and waits for the managers to finish communication
-	servermanager.RegisterSyncVar(syncVar1, 1, servermanager.AllClients...)
+	servermanager.RegisterSyncVar(true, syncVar1, 1, servermanager.AllClients...)
 	server.WaitForAllConfirmations()
 	//Registers a syncvar and waits for the managers to finish communication
-	servermanager.RegisterSyncVar(syncVar2, 2, servermanager.AllClients...)
+	servermanager.RegisterSyncVar(true, syncVar2, 2, servermanager.AllClients...)
 	server.WaitForAllConfirmations()
 	//Registers a syncvar and waits for the managers to finish communication
-	servermanager.RegisterSyncVar(syncVar3, 3, servermanager.AllClients...)
+	servermanager.RegisterSyncVar(true, syncVar3, 3, servermanager.AllClients...)
 	server.WaitForAllConfirmations()
 	
 	//Updates all syncvars that changed on the server side and waits for the managers to finish communication
-	servermanager.UpdateSyncVars()
+	servermanager.UpdateSyncVarsNormal()
 	server.WaitForAllConfirmations()
 	
 	//Prints the Point syncvar of the server and client
@@ -113,7 +113,7 @@ func main() {
 	fmt.Println(clientmanager.SyncvarsByACID[1])
 	
 	//Deletes the point syncvar and waits for the managers to finish communication
-	clientmanager.DeleteSyncVar(1)
+	clientmanager.DeleteSyncVarNormal(1)
 	client.WaitForConfirmation()
 	
 	//shows that both manager have one syncvar less
