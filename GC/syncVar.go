@@ -4,19 +4,19 @@ import (
 	"bytes"
 	"encoding/binary"
 
-	cmp "github.com/mortim-portim/GraphEng/Compression"
+	cmp "github.com/mortim-portim/GraphEng/compression"
 )
 
 //
-//.d8888. db    db d8b   db  .o88b. db    db  .d8b.  d8888b. 
-//88'  YP `8b  d8' 888o  88 d8P  Y8 88    88 d8' `8b 88  `8D 
-//`8bo.    `8bd8'  88V8o 88 8P      Y8    8P 88ooo88 88oobY' 
-//  `Y8b.    88    88 V8o88 8b      `8b  d8' 88~~~88 88`8b   
-//db   8D    88    88  V888 Y8b  d8  `8bd8'  88   88 88 `88. 
-//`8888Y'    YP    VP   V8P  `Y88P'    YP    YP   YP 88   YD 
+//.d8888. db    db d8b   db  .o88b. db    db  .d8b.  d8888b.
+//88'  YP `8b  d8' 888o  88 d8P  Y8 88    88 d8' `8b 88  `8D
+//`8bo.    `8bd8'  88V8o 88 8P      Y8    8P 88ooo88 88oobY'
+//  `Y8b.    88    88 V8o88 8b      `8b  d8' 88~~~88 88`8b
+//db   8D    88    88  V888 Y8b  d8  `8bd8'  88   88 88 `88.
+//`8888Y'    YP    VP   V8P  `Y88P'    YP    YP   YP 88   YD
 //
 
-//Syncronized Variable                                                       
+//Syncronized Variable
 type SyncVar interface {
 	IsDirty() bool
 	//MakeDirty()
@@ -26,21 +26,22 @@ type SyncVar interface {
 	IsRegisteredTo(int)
 }
 
-var RegisteredSyncVarTypes map[byte](func()(SyncVar))
-func RegisterSyncVar(idx byte, factory func()(SyncVar)) {
+var RegisteredSyncVarTypes map[byte](func() SyncVar)
+
+func RegisterSyncVar(idx byte, factory func() SyncVar) {
 	RegisteredSyncVarTypes[idx] = factory
 }
 func InitSyncVarStandardTypes() {
-	RegisteredSyncVarTypes = make(map[byte](func()(SyncVar)))
-	RegisteredSyncVarTypes[INT64SYNCED] = func()(SyncVar){return CreateSyncInt64(0)}
-	RegisteredSyncVarTypes[FLOAT64SYNCED] = func()(SyncVar){return CreateSyncFloat64(0)}
-	RegisteredSyncVarTypes[STRINGSYNCED] = func()(SyncVar){return CreateSyncString("")}
-	RegisteredSyncVarTypes[INT16SYNCED] = func()(SyncVar){return CreateSyncInt16(0)}
-	RegisteredSyncVarTypes[BOOLSYNCED] = func()(SyncVar){return CreateSyncBool(false)}
-	RegisteredSyncVarTypes[BYTESYNCED] = func()(SyncVar){return CreateSyncByte(0)}
-	RegisteredSyncVarTypes[BYTECOORDSYNCED] = func()(SyncVar){return CreateSyncByteCoord(0,0)}
-	RegisteredSyncVarTypes[UINT16SYNCED] = func()(SyncVar){return CreateSyncUInt16(0)}
-	RegisteredSyncVarTypes[CHANNELSYNCED] = func()(SyncVar){return CreateSyncChannel()}
+	RegisteredSyncVarTypes = make(map[byte](func() SyncVar))
+	RegisteredSyncVarTypes[INT64SYNCED] = func() SyncVar { return CreateSyncInt64(0) }
+	RegisteredSyncVarTypes[FLOAT64SYNCED] = func() SyncVar { return CreateSyncFloat64(0) }
+	RegisteredSyncVarTypes[STRINGSYNCED] = func() SyncVar { return CreateSyncString("") }
+	RegisteredSyncVarTypes[INT16SYNCED] = func() SyncVar { return CreateSyncInt16(0) }
+	RegisteredSyncVarTypes[BOOLSYNCED] = func() SyncVar { return CreateSyncBool(false) }
+	RegisteredSyncVarTypes[BYTESYNCED] = func() SyncVar { return CreateSyncByte(0) }
+	RegisteredSyncVarTypes[BYTECOORDSYNCED] = func() SyncVar { return CreateSyncByteCoord(0, 0) }
+	RegisteredSyncVarTypes[UINT16SYNCED] = func() SyncVar { return CreateSyncUInt16(0) }
+	RegisteredSyncVarTypes[CHANNELSYNCED] = func() SyncVar { return CreateSyncChannel() }
 }
 
 func GetSyncVarOfType(t byte) SyncVar {
@@ -48,11 +49,13 @@ func GetSyncVarOfType(t byte) SyncVar {
 }
 
 func GetBasicSyncVar() BasicSyncVar {
-	return BasicSyncVar{Registered:1, Updated:0}
+	return BasicSyncVar{Registered: 1, Updated: 0}
 }
+
 type BasicSyncVar struct {
 	Registered, Updated int
 }
+
 func (sv *BasicSyncVar) IsRegisteredTo(count int) {
 	sv.Registered = count
 }
@@ -60,7 +63,7 @@ func (sv *BasicSyncVar) AllUpdated() bool {
 	return sv.Updated >= sv.Registered
 }
 func (sv *BasicSyncVar) UpdatedPP() {
-	sv.Updated ++
+	sv.Updated++
 }
 func (sv *BasicSyncVar) ResetUpdated() {
 	sv.Updated = 0
@@ -74,6 +77,7 @@ type SyncInt64 struct {
 	variable int64
 	dirty    bool
 }
+
 func (sv *SyncInt64) SetInt(i int64) {
 	if i != sv.variable {
 		sv.variable = i
@@ -119,6 +123,7 @@ type SyncInt16 struct {
 	variable int16
 	dirty    bool
 }
+
 func (sv *SyncInt16) SetInt(i int16) {
 	if i != sv.variable {
 		sv.variable = i
@@ -152,6 +157,7 @@ func (sv *SyncInt16) Type() byte {
 func CreateSyncInt16(variable int16) *SyncInt16 {
 	return &SyncInt16{GetBasicSyncVar(), variable, true}
 }
+
 // +-+-+-+-+-+-+-+-+-+-+
 // |S|y|n|c|U|I|n|t|1|6|
 // +-+-+-+-+-+-+-+-+-+-+
@@ -160,6 +166,7 @@ type SyncUInt16 struct {
 	variable uint16
 	dirty    bool
 }
+
 func (sv *SyncUInt16) SetInt(i uint16) {
 	if i != sv.variable {
 		sv.variable = i
@@ -196,6 +203,7 @@ func (sv *SyncUInt16) Type() byte {
 func CreateSyncUInt16(variable uint16) *SyncUInt16 {
 	return &SyncUInt16{GetBasicSyncVar(), variable, true}
 }
+
 // +-+-+-+-+-+-+-+-+
 // |S|y|n|c|B|o|o|l|
 // +-+-+-+-+-+-+-+-+
@@ -204,6 +212,7 @@ type SyncBool struct {
 	variable bool
 	dirty    bool
 }
+
 func (sv *SyncBool) SetBool(i bool) {
 	if i != sv.variable {
 		sv.variable = i
@@ -246,6 +255,7 @@ type SyncByte struct {
 	variable byte
 	dirty    bool
 }
+
 func (sv *SyncByte) SetByte(i byte) {
 	if i != sv.variable {
 		sv.variable = i
@@ -285,15 +295,17 @@ func CreateSyncByte(variable byte) *SyncByte {
 // +-+-+-+-+-+-+-+-+-+-+-+-+-+
 type SyncByteCoord struct {
 	BasicSyncVar
-	x,y int8
-	dirty    bool
+	x, y  int8
+	dirty bool
 }
-func (sv *SyncByteCoord) Move(dx,dy int8) {
+
+func (sv *SyncByteCoord) Move(dx, dy int8) {
 	sv.Set(sv.x+dx, sv.y+dy)
 }
-func (sv *SyncByteCoord) Set(x,y int8) {
+func (sv *SyncByteCoord) Set(x, y int8) {
 	if x != sv.x || y != sv.y {
-		sv.x = x; sv.y = y
+		sv.x = x
+		sv.y = y
 		sv.dirty = true
 		sv.ResetUpdated()
 	}
@@ -312,18 +324,18 @@ func (sv *SyncByteCoord) GetData() []byte {
 	if sv.AllUpdated() {
 		sv.dirty = false
 	}
-	return []byte{byte(int(sv.x)+128), byte(int(sv.y)+128)}
+	return []byte{byte(int(sv.x) + 128), byte(int(sv.y) + 128)}
 }
 func (sv *SyncByteCoord) SetData(data []byte) {
 	sv.dirty = false
-	sv.x = int8(int(data[0])-128)
-	sv.y = int8(int(data[1])-128)
+	sv.x = int8(int(data[0]) - 128)
+	sv.y = int8(int(data[1]) - 128)
 }
 func (sv *SyncByteCoord) Type() byte {
 	return BYTECOORDSYNCED
 }
-func CreateSyncByteCoord(x,y int8) *SyncByteCoord {
-	return &SyncByteCoord{GetBasicSyncVar(), x,y, true}
+func CreateSyncByteCoord(x, y int8) *SyncByteCoord {
+	return &SyncByteCoord{GetBasicSyncVar(), x, y, true}
 }
 
 // +-+-+-+-+-+-+-+-+-+-+-+
@@ -334,6 +346,7 @@ type SyncFloat64 struct {
 	variable float64
 	dirty    bool
 }
+
 func (sv *SyncFloat64) SetFloat(i float64) {
 	if i != sv.variable {
 		sv.variable = i
@@ -379,6 +392,7 @@ type SyncString struct {
 	variable string
 	dirty    bool
 }
+
 func (sv *SyncString) Clear() {
 	if len(sv.variable) > 0 {
 		sv.variable = ""

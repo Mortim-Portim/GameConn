@@ -4,7 +4,7 @@ import (
 	"sync"
 
 	ws "github.com/gorilla/websocket"
-	cmp "github.com/mortim-portim/GraphEng/Compression"
+	cmp "github.com/mortim-portim/GraphEng/compression"
 )
 
 type Handler interface {

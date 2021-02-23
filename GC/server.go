@@ -1,13 +1,14 @@
 package GC
 
 import (
-	"net"
 	"fmt"
-	"time"
-	"sync"
+	"net"
 	"net/http"
+	"sync"
+	"time"
+
 	ws "github.com/gorilla/websocket"
-	cmp "github.com/mortim-portim/GraphEng/Compression"
+	cmp "github.com/mortim-portim/GraphEng/compression"
 )
 
 /**
@@ -15,28 +16,28 @@ TODO is multiple useres connect at the same time
 User disappear
 **/
 
-const ARTIFICIAL_CLIENT_PING = time.Millisecond*30
-const ARTIFICIAL_SERVER_PING = time.Millisecond*30
+const ARTIFICIAL_CLIENT_PING = time.Millisecond * 30
+const ARTIFICIAL_SERVER_PING = time.Millisecond * 30
 
 type Server struct {
-	Closing, AllConnections		[]*ws.Conn
-	
+	Closing, AllConnections []*ws.Conn
+
 	topLevelLock map[*ws.Conn]*sync.Mutex
-	dataLock sync.Mutex
+	dataLock     sync.Mutex
 	confirmLocks map[*ws.Conn]*sync.Mutex
-	
-	Connections map[*ws.Conn]chan bool
-	Data        map[*ws.Conn]([]byte)
-	Confirms	map[*ws.Conn]chan bool
-	PendingConfirms map[*ws.Conn]int
-	connCounter int
+
+	Connections         map[*ws.Conn]chan bool
+	Data                map[*ws.Conn]([]byte)
+	Confirms            map[*ws.Conn]chan bool
+	PendingConfirms     map[*ws.Conn]int
+	connCounter         int
 	pendingConfirmsLock sync.Mutex
 
-	BufferedData map[*ws.Conn]([]byte)
-	ClientsWaiting map[*ws.Conn]bool
+	BufferedData                         map[*ws.Conn]([]byte)
+	ClientsWaiting                       map[*ws.Conn]bool
 	BufferedDataLock, ClientsWaitingLock sync.Mutex
-	
-	MsgStack []*message
+
+	MsgStack     []*message
 	InputWaiting bool
 	upgrader     *ws.Upgrader
 	InputHandler func(c *ws.Conn, mt int, msg []byte, err error, s *Server)
@@ -48,8 +49,8 @@ func GetNewServer() (s *Server) {
 	s = &Server{}
 	s.upgrader = &ws.Upgrader{}
 	s.Connections = make(map[*ws.Conn]chan bool)
-	s.Data = 		make(map[*ws.Conn]([]byte))
-	s.Confirms = 	make(map[*ws.Conn]chan bool)
+	s.Data = make(map[*ws.Conn]([]byte))
+	s.Confirms = make(map[*ws.Conn]chan bool)
 	s.PendingConfirms = make(map[*ws.Conn]int)
 	s.connCounter = 0
 	s.topLevelLock = make(map[*ws.Conn]*sync.Mutex)
@@ -78,7 +79,9 @@ func (s *Server) pushBuffer(c *ws.Conn) {
 	s.ClientsWaitingLock.Lock()
 	waiting := s.ClientsWaiting[c]
 	s.ClientsWaitingLock.Unlock()
-	if waiting {return}
+	if waiting {
+		return
+	}
 	s.ClientsWaitingLock.Lock()
 	s.ClientsWaiting[c] = true
 	s.ClientsWaitingLock.Unlock()
@@ -87,7 +90,7 @@ func (s *Server) pushBuffer(c *ws.Conn) {
 	s.BufferedData[c] = []byte{}
 	s.BufferedDataLock.Unlock()
 	s.sendSimple(append([]byte{MULTI_MSG}, Data...), c)
-	
+
 	go func() {
 		s.WaitForConfirmation(c)
 		s.ClientsWaitingLock.Lock()
@@ -105,7 +108,7 @@ func (s *Server) sendSimple(bs []byte, c *ws.Conn) {
 	s.topLevelLock[c].Lock()
 	printLogF(3, "Sending msg of len(%v) to connection %p\n", len(bs), c)
 	s.pendingConfirmsLock.Lock()
-	s.PendingConfirms[c] ++
+	s.PendingConfirms[c]++
 	s.pendingConfirmsLock.Unlock()
 	s.dataLock.Lock()
 	s.Data[c] = bs
@@ -117,10 +120,10 @@ func (s *Server) sendSimple(bs []byte, c *ws.Conn) {
 }
 func (s *Server) WaitForConfirmation(c *ws.Conn) {
 	if s.isConnClosed(c) {
-		printLogF(2,"Conn %p is closing, not waiting\n", c)
+		printLogF(2, "Conn %p is closing, not waiting\n", c)
 		return
 	}
-	
+
 	lock := s.confirmLocks[c]
 	if lock != nil {
 		lock.Lock()
@@ -130,7 +133,7 @@ func (s *Server) WaitForConfirmation(c *ws.Conn) {
 		for s.PendingConfirms[c] > 0 {
 			printLogF(1, "Waiting for %v confirmations on %p\n", s.PendingConfirms[c], c)
 			<-ch
-			s.PendingConfirms[c] --
+			s.PendingConfirms[c]--
 		}
 		s.pendingConfirmsLock.Unlock()
 		printLogF(1, "Waiting finished on %p\n", c)
@@ -140,22 +143,22 @@ func (s *Server) WaitForConfirmation(c *ws.Conn) {
 	}
 }
 func (s *Server) WaitForConfirmations(cs ...*ws.Conn) {
-	for _,c := range(cs) {
+	for _, c := range cs {
 		s.WaitForConfirmation(c)
 	}
 }
 func (s *Server) WaitForAllConfirmations() {
-	for _,c := range(s.AllConnections) {
+	for _, c := range s.AllConnections {
 		s.WaitForConfirmation(c)
 	}
 }
 func (s *Server) SendToMultiple(bs []byte, cs ...*ws.Conn) {
-	for _,c := range(cs) {
+	for _, c := range cs {
 		s.SendBuffered(bs, c)
 	}
 }
 func (s *Server) SendAll(bs []byte) {
-	for _,c := range(s.AllConnections) {
+	for _, c := range s.AllConnections {
 		s.SendBuffered(bs, c)
 	}
 }
@@ -168,19 +171,19 @@ func (s *Server) RunOnPort(port string) string {
 
 //addr := "localhost:8080"
 //Should only be called with a delay
-func (s *Server) Run(addr string)  {
+func (s *Server) Run(addr string) {
 	go func() {
 		http.HandleFunc("/", s.home)
 		http.ListenAndServe(addr, nil)
 	}()
 	time.Sleep(time.Millisecond)
 }
-func (s *Server) home(w http.ResponseWriter, r *http.Request) {	
+func (s *Server) home(w http.ResponseWriter, r *http.Request) {
 	c, err := s.upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		return
 	}
-	
+
 	c.SetPongHandler(func(appData string) error {
 		if _, ok := s.Confirms[c]; ok {
 			printLogF(1, "Confirming for %p\n", c)
@@ -188,7 +191,7 @@ func (s *Server) home(w http.ResponseWriter, r *http.Request) {
 		}
 		return nil
 	})
-	
+
 	s.AllConnections = append(s.AllConnections, c)
 	var Locker, lowLevelLock, confirmL sync.Mutex
 	s.confirmLocks[c] = &confirmL
@@ -199,7 +202,7 @@ func (s *Server) home(w http.ResponseWriter, r *http.Request) {
 	s.Connections[c] = make(chan bool)
 	s.Confirms[c] = make(chan bool)
 	s.PendingConfirms[c] = 0
-	
+
 	s.connCounter++
 	go func() {
 		for {
@@ -231,8 +234,7 @@ func (s *Server) home(w http.ResponseWriter, r *http.Request) {
 			}
 			break
 		}
-		
-		
+
 		if msg[0] == NEWCONNECTION {
 			if s.OnNewConn != nil {
 				s.OnNewConn(c, mt, msg[1:], err, s)
@@ -244,15 +246,16 @@ func (s *Server) home(w http.ResponseWriter, r *http.Request) {
 			}
 			return
 		} else {
-			RealMsgType := msg[0];msg := msg[1:]
+			RealMsgType := msg[0]
+			msg := msg[1:]
 			if RealMsgType == SINGLE_MSG {
-				s.handleInput(c,mt,msg,err)
-			}else if RealMsgType == MULTI_MSG {
+				s.handleInput(c, mt, msg, err)
+			} else if RealMsgType == MULTI_MSG {
 				for len(msg) > 1 {
 					l := int(cmp.BytesToInt16(msg[0:2]))
-					data := msg[2:2+l]
+					data := msg[2 : 2+l]
 					msg = msg[l+2:]
-					s.handleInput(c,mt,data,err)
+					s.handleInput(c, mt, data, err)
 				}
 			}
 			lowLevelLock.Lock()
@@ -265,21 +268,23 @@ func (s *Server) home(w http.ResponseWriter, r *http.Request) {
 	}
 }
 func (s *Server) HandleInput() {
-	for _,M := range s.MsgStack {
+	for _, M := range s.MsgStack {
 		s.callInputHandler(M.c, M.mt, M.msg, M.err)
 	}
 	s.MsgStack = make([]*message, 0)
 }
+
 type message struct {
-	c *ws.Conn
-	mt int
+	c   *ws.Conn
+	mt  int
 	msg []byte
 	err error
 }
+
 func (s *Server) handleInput(c *ws.Conn, mt int, msg []byte, err error) {
 	if s.InputWaiting {
-		s.MsgStack = append(s.MsgStack, &message{c,mt,msg,err})
-	}else{
+		s.MsgStack = append(s.MsgStack, &message{c, mt, msg, err})
+	} else {
 		s.callInputHandler(c, mt, msg, err)
 	}
 }
@@ -293,7 +298,7 @@ func (s *Server) closeConn(c *ws.Conn) {
 	s.Closing = append(s.Closing, c)
 	printLogF(4, "Closing connection to %p\n", c)
 	time.Sleep(time.Millisecond)
-	
+
 	printLogF(1, "Locking top level for %p\n", c)
 	s.topLevelLock[c].Lock()
 	//s.confirmLocks[c].Lock()
@@ -302,7 +307,7 @@ func (s *Server) closeConn(c *ws.Conn) {
 	if _, ok := s.Confirms[c]; ok {
 		close(s.Confirms[c])
 	}
-	
+
 	printLogF(1, "Deleting map entries for %p\n", c)
 	delete(s.topLevelLock, c)
 	delete(s.confirmLocks, c)
@@ -312,10 +317,10 @@ func (s *Server) closeConn(c *ws.Conn) {
 	s.dataLock.Unlock()
 	delete(s.Confirms, c)
 	delete(s.PendingConfirms, c)
-	
-	printLogF(1, "Removing %p from Allconnections: %v\n",c, s.AllConnections)
+
+	printLogF(1, "Removing %p from Allconnections: %v\n", c, s.AllConnections)
 	s.AllConnections = removeC(s.AllConnections, c)
-	s.connCounter --
+	s.connCounter--
 	printLogF(4, "Finished Closing Connection %p: AllConnections: %v, counter: %v\n", c, s.AllConnections, s.connCounter)
 }
 func GetLocalIP() string {

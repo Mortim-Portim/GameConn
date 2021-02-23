@@ -4,10 +4,11 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
-	"time"
 	"sync"
+	"time"
+
 	ws "github.com/gorilla/websocket"
-	cmp "github.com/mortim-portim/GraphEng/Compression"
+	cmp "github.com/mortim-portim/GraphEng/compression"
 )
 
 func GetNewClient() (cl *Client) {
@@ -22,24 +23,26 @@ func (c *Client) reset() {
 	c.sendMessage = make([]byte, 0)
 	c.pendingConfirms = 0
 }
+
 type Client struct {
 	ws.Conn
-	done, waiting chan struct{}
-	interrupt     chan os.Signal
-	InputHandler  func(mt int, msg []byte, err error, c *Client) (alive bool)
+	done, waiting     chan struct{}
+	interrupt         chan os.Signal
+	InputHandler      func(mt int, msg []byte, err error, c *Client) (alive bool)
 	OnCloseConnection func()
-	
+
 	sendMessage, bufferedData []byte
-	bufferedWaiting bool
-	
-	confirmed	  chan bool
+	bufferedWaiting           bool
+
+	confirmed       chan bool
 	pendingConfirms int
-	
+
 	sendTimes []time.Time
-	Ping time.Duration
-	
+	Ping      time.Duration
+
 	topLevelLock, lowLevelLock, readLock, confirmLock sync.Mutex
 }
+
 func (c *Client) GetPendingConfirms() int {
 	return c.pendingConfirms
 }
@@ -53,9 +56,11 @@ func (c *Client) SendBuffered(bs []byte) {
 	printLogF(1, "Finished Buffered data %v\n", bs)
 }
 func (c *Client) pushBuffer() {
-	if c.bufferedWaiting {return}
+	if c.bufferedWaiting {
+		return
+	}
 	c.bufferedWaiting = true
-	
+
 	Data := c.bufferedData
 	c.bufferedData = []byte{}
 	c.sendSimple(append([]byte{MULTI_MSG}, Data...))
@@ -71,7 +76,7 @@ func (c *Client) SendNormal(bs []byte) {
 func (c *Client) sendSimple(bs []byte) {
 	printLogF(3, "Sending msg of len(%v) to server\n", len(bs))
 	c.topLevelLock.Lock()
-	c.pendingConfirms ++
+	c.pendingConfirms++
 	c.sendTimes = append(c.sendTimes, time.Now())
 	c.sendMessage = bs
 	close(c.waiting)
@@ -80,7 +85,7 @@ func (c *Client) WaitForConfirmation() {
 	c.confirmLock.Lock()
 	for c.pendingConfirms > 0 {
 		<-c.confirmed
-		c.pendingConfirms --
+		c.pendingConfirms--
 		if len(c.sendTimes) > 0 {
 			c.Ping = time.Now().Sub(c.sendTimes[0])
 			c.sendTimes = c.sendTimes[1:]
@@ -105,12 +110,12 @@ func (c *Client) MakeConn(addr string) error {
 		return err
 	}
 	c.Conn = *c_tmp
-	
+
 	c.Conn.SetPongHandler(func(appData string) error {
 		if c.confirmed != nil {
 			c.confirmed <- true
 		}
-		
+
 		return nil
 	})
 
@@ -121,22 +126,29 @@ func (c *Client) MakeConn(addr string) error {
 			c.readLock.Lock()
 			mt, msg, err := c.ReadMessage()
 			c.readLock.Unlock()
-			if err != nil || mt == ws.CloseMessage {break}
+			if err != nil || mt == ws.CloseMessage {
+				break
+			}
 			if mt == ws.BinaryMessage {
-				RealMsgType := msg[0];msg := msg[1:]
+				RealMsgType := msg[0]
+				msg := msg[1:]
 				if RealMsgType == SINGLE_MSG {
-					if c.InputHandler != nil && !c.InputHandler(mt, msg, err, c) {break}
-				}else if RealMsgType == MULTI_MSG {
+					if c.InputHandler != nil && !c.InputHandler(mt, msg, err, c) {
+						break
+					}
+				} else if RealMsgType == MULTI_MSG {
 					continuing := false
 					for len(msg) > 1 {
 						l := int(cmp.BytesToInt16(msg[0:2]))
-						data := msg[2:2+l]
+						data := msg[2 : 2+l]
 						msg = msg[l+2:]
 						if c.InputHandler != nil {
 							continuing = c.InputHandler(mt, data, err, c)
 						}
 					}
-					if !continuing {break}
+					if !continuing {
+						break
+					}
 				}
 				c.lowLevelLock.Lock()
 				err2 := c.WriteMessage(ws.PongMessage, []byte{})
@@ -188,12 +200,13 @@ func (c *Client) MakeConn(addr string) error {
 	time.Sleep(time.Millisecond)
 	return nil
 }
+
 //Should only be called with a delay
 func (c *Client) CloseConn() error {
 	c.readLock.Lock()
 	c.lowLevelLock.Lock()
 	c.topLevelLock.Lock()
-	
+
 	c.WriteMessage(ws.BinaryMessage, []byte{CLOSECONNECTION})
 	if c.OnCloseConnection != nil {
 		c.OnCloseConnection()
@@ -204,7 +217,7 @@ func (c *Client) CloseConn() error {
 		close(c.confirmed)
 	}
 	c.reset()
-	
+
 	c.readLock.Unlock()
 	c.lowLevelLock.Unlock()
 	c.topLevelLock.Unlock()
