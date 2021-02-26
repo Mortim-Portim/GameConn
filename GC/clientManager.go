@@ -318,44 +318,27 @@ func (m *ClientManager) processRegisterVarsConfirm(data []byte) {
 	}
 	printLogF(3, ".....Client: MCreating %v SyncVars, confirmed by server=%s", len(data)/4, m.Client.RemoteAddr().String())
 }
-func (m *ClientManager) onSyncVarUpdateC(testData []byte) {
-	allSyncVarsData := make([]byte, len(testData))
-	copy(allSyncVarsData, testData)
+func (m *ClientManager) onSyncVarUpdateC(allSyncVarsData []byte) {
 	num := 0
-	printLogF(1, "Updating syncVars from data of len(%v): %v\n", len(allSyncVarsData), allSyncVarsData)
 	for true {
 		num++
-		printLogF(1, "allSyncVarsData1: %v\n", allSyncVarsData)
 		id := int(cmp.BytesToInt16(allSyncVarsData[:2]))
-		printLogF(1, "ID: %v\n", id)
 		l := cmp.BytesToUint32(allSyncVarsData[2:6])
-		printLogF(1, "len: %v\n", l)
 		svData := allSyncVarsData[6 : 6+l]
-		printLogF(1, "svData: %v\n", svData)
-		//printLogF(".....Client: Updating SyncVar with ID=%v: len(dat)=%v, initiated by server=%s", id, l, m.Client.RemoteAddr().String())
-		printLogF(1, "allSyncVarsData2: %v\n", allSyncVarsData)
 		allSyncVarsData = allSyncVarsData[6+l:]
-		printLogF(1, "allSyncVarsData3: %v\n", allSyncVarsData)
 		m.SV_ID_L.Lock()
 		sv, ok := m.SyncvarsByID[id]
 		m.SV_ID_L.Unlock()
-		printLogF(1, "allSyncVarsData4: %v\n", allSyncVarsData)
 		if !ok {
 			panic(fmt.Sprintf("%v not in map %v, data: %v, l: %v\n", id, m.SyncvarsByID, svData, l))
 		}
 		sv.SetData(svData)
-		printLogF(1, "allSyncVarsData5: %v\n", allSyncVarsData)
 		if fnc, ok := m.SyncVarOnChange[id]; ok {
-			printLogF(1, "allSyncVarsData5.1: %v\n", allSyncVarsData)
-			printLogF(1, "SyncVar: %v\n", sv.Type())
-			fnc(sv, id)
-			printLogF(1, "allSyncVarsData5.2: %v\n", allSyncVarsData)
+			defer fnc(sv, id)
 		}
-		printLogF(1, "allSyncVarsData6: %v\n", allSyncVarsData)
 		if len(allSyncVarsData) <= 0 {
 			break
 		}
-		printLogF(1, "allSyncVarsData7: %v\n", allSyncVarsData)
 	}
 	printLogF(2, ".....Client: Updating %v SyncVars, initiated by server=%s", num, m.Client.RemoteAddr().String())
 }

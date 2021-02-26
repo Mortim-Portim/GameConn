@@ -140,15 +140,10 @@ func (c *Client) MakeConn(addr string) error {
 					}
 				} else if RealMsgType == MULTI_MSG {
 					continuing := false
-					printLogF(1, "Received msg of len(%v): %v\n", len(data), data)
 					for len(data) > 1 {
-						printLogF(1, "MSG1: %v\n", data)
 						l := int(cmp.BytesToUint32(data[0:4]))
-						printLogF(1, "len: %v\n", l)
 						singleMsg := data[4 : 4+l]
-						printLogF(1, "singleMsg: %v\n", singleMsg)
 						data = data[l+4:]
-						printLogF(1, "MSG2: %v\n", data)
 						if c.InputHandler != nil {
 							continuing = c.InputHandler(mt, singleMsg, err, c)
 						}
