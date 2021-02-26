@@ -1,5 +1,9 @@
 package GC
 
+import (
+	cmp "github.com/mortim-portim/GraphEng/compression"
+)
+
 func GetNewChannel(pipes int) *Channel {
 	return &Channel{GetBasicSyncVar(), true, make([]bool, pipes), make([]int, 0), make([][]byte, pipes)}
 }
@@ -55,9 +59,6 @@ func (ch *Channel) SendToPipe(idx int, bs []byte, force bool) bool {
 	return false
 }
 func (ch *Channel) assignToPipe(idx int, bs []byte) bool {
-	if len(bs) > 256 {
-		panic("Cannot assign more than 256 values to a slice")
-	}
 	for len(ch.Pipes) < (idx + 1) {
 		ch.Pipes = append(ch.Pipes, []byte{})
 	}
@@ -70,7 +71,8 @@ func (ch *Channel) assignToPipe(idx int, bs []byte) bool {
 func (ch *Channel) PipesToBytes() (bs []byte) {
 	for _, idx := range ch.PipeChngs {
 		data := ch.Pipes[idx]
-		bs = append(bs, byte(idx), byte(len(data)))
+		bs = append(bs, byte(idx))
+		bs = append(bs, cmp.UInt16ToBytes(uint16(len(data)))...)
 		bs = append(bs, data...)
 	}
 	return
@@ -78,9 +80,9 @@ func (ch *Channel) PipesToBytes() (bs []byte) {
 func (ch *Channel) BytesToPipes(bs []byte) {
 	for len(bs) > 2 {
 		idx := int(bs[0])
-		l := int(bs[1])
-		data := bs[2 : 2+l]
-		bs = bs[2+l:]
+		l := int(cmp.BytesToUInt16(bs[1:3]))
+		data := bs[3 : 3+l]
+		bs = bs[3+l:]
 		ch.assignToPipe(idx, data)
 		for len(ch.justChanged) < (idx + 1) {
 			ch.justChanged = append(ch.justChanged, false)
