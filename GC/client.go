@@ -55,6 +55,11 @@ func (c *Client) SendBuffered(bs []byte) {
 	c.pushBuffer()
 	printLogF(1, "Finished Buffered data %v\n", bs)
 }
+func (c *Client) PushBufferIfFilled() {
+	if len(c.bufferedData) > 0 {
+		c.pushBuffer()
+	}
+}
 func (c *Client) pushBuffer() {
 	if c.bufferedWaiting {
 		return

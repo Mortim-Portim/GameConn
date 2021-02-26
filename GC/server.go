@@ -16,8 +16,8 @@ TODO is multiple useres connect at the same time
 User disappear
 **/
 
-const ARTIFICIAL_CLIENT_PING = time.Millisecond * 60
-const ARTIFICIAL_SERVER_PING = time.Millisecond * 60
+const ARTIFICIAL_CLIENT_PING = 0 //time.Millisecond * 60
+const ARTIFICIAL_SERVER_PING = 0 //time.Millisecond * 60
 
 type Server struct {
 	Closing, AllConnections []*ws.Conn
@@ -74,6 +74,14 @@ func (s *Server) SendBuffered(bs []byte, c *ws.Conn) {
 	printLogF(1, "Pushing Buffered data %v\n", bs)
 	s.pushBuffer(c)
 	printLogF(1, "Finished Buffered data %v\n", bs)
+}
+func (s *Server) PushBufferIfFilled(c *ws.Conn) {
+	s.BufferedDataLock.Lock()
+	l := len(s.BufferedData[c])
+	s.BufferedDataLock.Unlock()
+	if l > 0 {
+		s.pushBuffer(c)
+	}
 }
 func (s *Server) pushBuffer(c *ws.Conn) {
 	s.ClientsWaitingLock.Lock()

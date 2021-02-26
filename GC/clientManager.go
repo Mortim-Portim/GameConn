@@ -138,6 +138,7 @@ func (m *ClientManager) UpdateSyncVarsWithACIDsBuffered(ACIDs ...int) (uc int) {
 	if len(var_data) > 1 {
 		m.Client.SendBuffered(var_data)
 	}
+	m.Client.PushBufferIfFilled()
 	return
 }
 
@@ -162,6 +163,7 @@ func (m *ClientManager) UpdateSyncVarsBuffered() (uc int) {
 	if len(var_data) > 1 {
 		m.Client.SendBuffered(var_data)
 	}
+	m.Client.PushBufferIfFilled()
 	return
 }
 func (m *ClientManager) updateSyncVarsByACIDAndReturnData(all bool, ACIDs ...int) (var_data []byte, uc int) {
