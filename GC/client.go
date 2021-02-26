@@ -142,7 +142,8 @@ func (c *Client) MakeConn(addr string) error {
 					continuing := false
 					for len(data) > 1 {
 						l := int(cmp.BytesToUint32(data[0:4]))
-						singleMsg := data[4 : 4+l]
+						singleMsg := make([]byte, l)
+						copy(singleMsg, data[4:4+l])
 						data = data[l+4:]
 						if c.InputHandler != nil {
 							continuing = c.InputHandler(mt, singleMsg, err, c)
