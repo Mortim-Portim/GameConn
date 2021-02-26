@@ -28,7 +28,7 @@ Server registers multiple SyncVars->Payload:
 [SYNCVAR_M_REGISTRY 			| (5){SyncVar.Type() 	| (2){AccessID}				| (2){id}}]									len() = 1+5*n
 
 SyncVars Update by Client/Server -> Payload:
-[SYNCVAR_UPDATE					| (n1){ (2)(id)			| (2)(SyncVar Length) 		| (n2)(SyncVar Data) }]						len() = 1+n1*(4+n2)
+[SYNCVAR_UPDATE					| (n1){ (2)(id)			| (4)(SyncVar Length) 		| (n2)(SyncVar Data) }]						len() = 1+n1*(6+n2)
 //1 Int64 --> 13 byte
 
 SyncVar Delete -> 					Payload:
@@ -171,7 +171,7 @@ func (m *ClientManager) updateSyncVarsByACIDAndReturnData(all bool, ACIDs ...int
 		if sv.IsDirty() && (all || containsI(ACIDs, ACID)) {
 			uc++
 			syncDat := sv.GetData()
-			data := append(cmp.Int16ToBytes(int16(len(syncDat))), syncDat...)
+			data := append(cmp.Uint32ToBytes(uint32(len(syncDat))), syncDat...)
 			m.ACID_ID_L.Lock()
 			payload := append(cmp.Int16ToBytes(int16(m.ACIDToID[ACID])), data...)
 			m.ACID_ID_L.Unlock()
@@ -190,7 +190,7 @@ func (m *ClientManager) updateSyncVarsByIDAndReturnData(all bool, IDs ...int) (v
 			uc++
 			syncDat := sv.GetData()
 			//printLogF(".....Client: Updating SyncVar with ID=%v: len(dat)=%v, initiated by self=%s", id, len(syncDat), m.Client.LocalAddr().String())
-			data := append(cmp.Int16ToBytes(int16(len(syncDat))), syncDat...)
+			data := append(cmp.Uint32ToBytes(uint32(len(syncDat))), syncDat...)
 			payload := append(cmp.Int16ToBytes(int16(id)), data...)
 			var_data = append(var_data, payload...)
 		}
@@ -318,28 +318,49 @@ func (m *ClientManager) processRegisterVarsConfirm(data []byte) {
 	}
 	printLogF(3, ".....Client: MCreating %v SyncVars, confirmed by server=%s", len(data)/4, m.Client.RemoteAddr().String())
 }
-func (m *ClientManager) onSyncVarUpdateC(data []byte) {
+func (m *ClientManager) onSyncVarUpdateC(testData []byte) {
+	allSyncVarsData := make([]byte, len(testData))
+	copy(allSyncVarsData, testData)
 	num := 0
+	printLogF(1, "Updating syncVars from data of len(%v): %v\n", len(allSyncVarsData), allSyncVarsData)
 	for true {
 		num++
-		id := int(cmp.BytesToInt16(data[:2]))
-		l := cmp.BytesToInt16(data[2:4])
-		dat := data[4 : 4+l]
+		printLogF(1, "allSyncVarsData1: %v\n", allSyncVarsData)
+		id := int(cmp.BytesToInt16(allSyncVarsData[:2]))
+		printLogF(1, "ID: %v\n", id)
+		l := cmp.BytesToUint32(allSyncVarsData[2:6])
+		printLogF(1, "len: %v\n", l)
+		svData := allSyncVarsData[6 : 6+l]
+		printLogF(1, "svData: %v\n", svData)
 		//printLogF(".....Client: Updating SyncVar with ID=%v: len(dat)=%v, initiated by server=%s", id, l, m.Client.RemoteAddr().String())
-		data = data[4+l:]
+		printLogF(1, "allSyncVarsData2: %v\n", allSyncVarsData)
+		allSyncVarsData = allSyncVarsData[6+l:]
+		printLogF(1, "allSyncVarsData3: %v\n", allSyncVarsData)
 		m.SV_ID_L.Lock()
 		sv, ok := m.SyncvarsByID[id]
 		m.SV_ID_L.Unlock()
+		printLogF(1, "allSyncVarsData4: %v\n", allSyncVarsData)
 		if !ok {
-			panic(fmt.Sprintf("%v not in map %v, data: %v, l: %v\n", id, m.SyncvarsByID, dat, l))
+			panic(fmt.Sprintf("%v not in map %v, data: %v, l: %v\n", id, m.SyncvarsByID, svData, l))
 		}
-		sv.SetData(dat)
+		sv.SetData(svData)
+		printLogF(1, "allSyncVarsData5: %v\n", allSyncVarsData)
 		if fnc, ok := m.SyncVarOnChange[id]; ok {
+			printLogF(1, "allSyncVarsData5.1: %v\n", allSyncVarsData)
+			printLogF(1, "SyncVar: %v\n", sv.Type())
 			fnc(sv, id)
+			printLogF(1, "allSyncVarsData5.2: %v\n", allSyncVarsData)
 		}
-		if len(data) <= 0 {
+		printLogF(1, "allSyncVarsData6: %v\n", allSyncVarsData)
+		if len(allSyncVarsData) <= 0 {
 			break
 		}
+		printLogF(1, "allSyncVarsData7: %v\n", allSyncVarsData)
 	}
 	printLogF(2, ".....Client: Updating %v SyncVars, initiated by server=%s", num, m.Client.RemoteAddr().String())
 }
+
+//9 128 47 0 0 0 1 45 7 33 128 0 124 93 40 0 42 236 192 191 178 110 35 194 133 53 195 191 29 67 188 52 69 102 30 64 89 49 52 64 251 217 29 64 1 0 5 8 128 7 128 25 245 13 128 13 0 0 0 1 11 0 162 141 162 12 178 6 19 64 44 0
+//9 128 47 0 0 0 1 45 7 33 128 0 124 93 40 0 42 236 192 191 178 110 35 194 133 53 195 191 29 67 188 52 69 102 30 64 89 49 52 64 251 217 29 64 1 0 5 8 128 7 128 25 245 13 128 13 0 0 0 1 11 0 162 141 162 12 178 6 19 64 44 0
+//9 128 47 0 0 0 1 45 7 33 128 0 124 93 40 0 42 236 192 191 178 110 35 194 133 53 195 191 29 67 188 52 69 102 30 64 89 49 52 64 251 217 29 64 1 0 5 8 128 7 128 25 245 13 128 13 0 0 0 1 11 0 162 141 162 12 178 6 19 64 44 0
+//1 45 7 33 128 0 124 93 40 0 42 236 192 191 178 110 35 194 133 53 195 191 29 67 188 52 69 102 30 64 89 49 52 64 251 217 29 64 1 0 5 8 128 7 128 25 245 13 128 13 0 0 0 1 11 0 162 141 162 12 178 6 19 64 44 0

@@ -66,7 +66,7 @@ func (s *Server) isConnClosed(c *ws.Conn) bool {
 }
 func (s *Server) SendBuffered(bs []byte, c *ws.Conn) {
 	printLogF(1, "Sending Buffered data %v\n", bs)
-	l := cmp.Int16ToBytes(int16(len(bs)))
+	l := cmp.Uint32ToBytes(uint32(len(bs)))
 	s.BufferedDataLock.Lock()
 	s.BufferedData[c] = append(s.BufferedData[c], l...)
 	s.BufferedData[c] = append(s.BufferedData[c], bs...)
@@ -107,6 +107,7 @@ func (s *Server) sendSimple(bs []byte, c *ws.Conn) {
 	}
 	s.topLevelLock[c].Lock()
 	printLogF(3, "Sending msg of len(%v) to connection %p\n", len(bs), c)
+	printLogF(1, "Msg: %v\n", bs)
 	s.pendingConfirmsLock.Lock()
 	s.PendingConfirms[c]++
 	s.pendingConfirmsLock.Unlock()
@@ -226,6 +227,7 @@ func (s *Server) home(w http.ResponseWriter, r *http.Request) {
 	defer c.Close()
 	for {
 		mt, msg, err := c.ReadMessage()
+		printLogF(1, "Received Msg of len(%v): %v\n", len(msg), msg)
 		if err != nil {
 			printLogF(4, "Error %p disconnects: %v, msg: %v, mt: %v\n", c, err, msg, mt)
 			s.closeConn(c)
@@ -252,9 +254,9 @@ func (s *Server) home(w http.ResponseWriter, r *http.Request) {
 				s.handleInput(c, mt, msg, err)
 			} else if RealMsgType == MULTI_MSG {
 				for len(msg) > 1 {
-					l := int(cmp.BytesToInt16(msg[0:2]))
-					data := msg[2 : 2+l]
-					msg = msg[l+2:]
+					l := int(cmp.BytesToUint32(msg[0:4]))
+					data := msg[4 : 4+l]
+					msg = msg[l+4:]
 					s.handleInput(c, mt, data, err)
 				}
 			}

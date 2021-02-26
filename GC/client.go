@@ -48,7 +48,7 @@ func (c *Client) GetPendingConfirms() int {
 }
 func (c *Client) SendBuffered(bs []byte) {
 	printLogF(1, "Sending Buffered data %v\n", bs)
-	l := cmp.Int16ToBytes(int16(len(bs)))
+	l := cmp.Uint32ToBytes(uint32(len(bs)))
 	c.bufferedData = append(c.bufferedData, l...)
 	c.bufferedData = append(c.bufferedData, bs...)
 	printLogF(1, "Pushing Buffered data %v\n", bs)
@@ -75,6 +75,7 @@ func (c *Client) SendNormal(bs []byte) {
 }
 func (c *Client) sendSimple(bs []byte) {
 	printLogF(3, "Sending msg of len(%v) to server\n", len(bs))
+	printLogF(1, "Msg: %v\n", bs)
 	c.topLevelLock.Lock()
 	c.pendingConfirms++
 	c.sendTimes = append(c.sendTimes, time.Now())
@@ -124,26 +125,32 @@ func (c *Client) MakeConn(addr string) error {
 	go func() {
 		for c != nil {
 			c.readLock.Lock()
-			mt, msg, err := c.ReadMessage()
+			mt, MSG, err := c.ReadMessage()
 			c.readLock.Unlock()
 			if err != nil || mt == ws.CloseMessage {
 				break
 			}
 			if mt == ws.BinaryMessage {
-				RealMsgType := msg[0]
-				msg := msg[1:]
+				printLogF(1, "Received Msg of len(%v): %v\n", len(MSG), MSG)
+				RealMsgType := MSG[0]
+				data := MSG[1:]
 				if RealMsgType == SINGLE_MSG {
-					if c.InputHandler != nil && !c.InputHandler(mt, msg, err, c) {
+					if c.InputHandler != nil && !c.InputHandler(mt, data, err, c) {
 						break
 					}
 				} else if RealMsgType == MULTI_MSG {
 					continuing := false
-					for len(msg) > 1 {
-						l := int(cmp.BytesToInt16(msg[0:2]))
-						data := msg[2 : 2+l]
-						msg = msg[l+2:]
+					printLogF(1, "Received msg of len(%v): %v\n", len(data), data)
+					for len(data) > 1 {
+						printLogF(1, "MSG1: %v\n", data)
+						l := int(cmp.BytesToUint32(data[0:4]))
+						printLogF(1, "len: %v\n", l)
+						singleMsg := data[4 : 4+l]
+						printLogF(1, "singleMsg: %v\n", singleMsg)
+						data = data[l+4:]
+						printLogF(1, "MSG2: %v\n", data)
 						if c.InputHandler != nil {
-							continuing = c.InputHandler(mt, data, err, c)
+							continuing = c.InputHandler(mt, singleMsg, err, c)
 						}
 					}
 					if !continuing {

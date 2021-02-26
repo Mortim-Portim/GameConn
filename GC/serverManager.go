@@ -158,7 +158,7 @@ func (ch *ClientHandler) updateSyncVarsByACIDAndReturnData(all bool, ACIDs ...in
 		if sv.IsDirty() && (all || containsI(ACIDs, ACID)) {
 			uc++
 			syncDat := sv.GetData()
-			data := append(cmp.Int16ToBytes(int16(len(syncDat))), syncDat...)
+			data := append(cmp.Uint32ToBytes(uint32(len(syncDat))), syncDat...)
 			ch.ACID_ID_L.Lock()
 			id := int16(ch.ACIDToID[ACID])
 			ch.ACID_ID_L.Unlock()
@@ -170,6 +170,7 @@ func (ch *ClientHandler) updateSyncVarsByACIDAndReturnData(all bool, ACIDs ...in
 	ch.SV_ACID_L.Unlock()
 	return
 }
+
 func (ch *ClientHandler) updateSyncVarsByIDAndReturnData(all bool, IDs ...int) (var_data []byte, uc int) {
 	var_data = []byte{SYNCVAR_UPDATE}
 	ch.SV_ID_L.Lock()
@@ -177,7 +178,7 @@ func (ch *ClientHandler) updateSyncVarsByIDAndReturnData(all bool, IDs ...int) (
 		if sv.IsDirty() && (all || containsI(IDs, id)) {
 			uc++
 			syncDat := sv.GetData()
-			data := append(cmp.Int16ToBytes(int16(len(syncDat))), syncDat...)
+			data := append(cmp.Uint32ToBytes(uint32(len(syncDat))), syncDat...)
 			payload := append(cmp.Int16ToBytes(int16(id)), data...)
 			var_data = append(var_data, payload...)
 			//printLogF("#####Server: Updating SyncVar with ID=%v: len(dat)=%v, initiated by self=%s", id, len(syncDat), ch.Conn.LocalAddr().String())
@@ -228,9 +229,9 @@ func (ch *ClientHandler) onSyncVarUpdateC(data []byte) {
 	for true {
 		num++
 		id := int(cmp.BytesToInt16(data[:2]))
-		l := cmp.BytesToInt16(data[2:4])
-		dat := data[4 : 4+l]
-		data = data[4+l:]
+		l := cmp.BytesToUint32(data[2:6])
+		dat := data[6 : 6+l]
+		data = data[6+l:]
 		ch.SV_ID_L.Lock()
 		sv := ch.SyncvarsByID[id]
 		ch.SV_ID_L.Unlock()

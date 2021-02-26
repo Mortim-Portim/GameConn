@@ -55,6 +55,9 @@ func (ch *Channel) SendToPipe(idx int, bs []byte, force bool) bool {
 	return false
 }
 func (ch *Channel) assignToPipe(idx int, bs []byte) bool {
+	if len(bs) > 256 {
+		panic("Cannot assign more than 256 values to a slice")
+	}
 	for len(ch.Pipes) < (idx + 1) {
 		ch.Pipes = append(ch.Pipes, []byte{})
 	}
