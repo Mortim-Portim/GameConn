@@ -1,4 +1,4 @@
 github.com/gorilla/websocket v1.4.2 h1:+/TMaTYc4QFitKJxsQ7Yye35DkWvkdLcvGKqM+x0Ufc=
 github.com/gorilla/websocket v1.4.2/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=
-github.com/mortim-portim/GraphEng/compression v0.0.0-20210313132001-81ac7c2659b5 h1:q2hvnhwqNkD68l3OxUYl+xBGEVy7Z+jnGU292ynBjpc=
-github.com/mortim-portim/GraphEng/compression v0.0.0-20210313132001-81ac7c2659b5/go.mod h1:Q2h/ilDF9o2pcbegelSfZ/76x6ynSzbeL6tv3emcbpU=
+github.com/mortim-portim/GraphEng/compression v0.0.0-20210313134449-764e077e69ab h1:lSaZwJrLYgtsMK4wuLq1LBvis8HRDxFgyl+a/eqGE/E=
+github.com/mortim-portim/GraphEng/compression v0.0.0-20210313134449-764e077e69ab/go.mod h1:Q2h/ilDF9o2pcbegelSfZ/76x6ynSzbeL6tv3emcbpU=
